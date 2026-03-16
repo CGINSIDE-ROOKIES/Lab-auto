@@ -5,3 +5,9 @@ __pycache__/
 *.pyc
 .venv/
 .DS_Store
+
+# Excel files (output/logs 제외, 분류체계 원본은 포함)
+*.xlsx
+*.xls
+*.xlsm
+!legal_scraper/data/분류체계.xlsx
