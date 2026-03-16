@@ -2,7 +2,7 @@
 전자소송포털 양식모음 스크래퍼
 방식: requests JSON API 직접 호출
 API: POST /psp/psp720/selectNboardList.on
-다운로드: https://file.scourt.go.kr/AttachDownload?path=004&file={fileSysName}
+다운로드: GET https://file.scourt.go.kr/AttachDownload?path=004&file={fileSysName}&downFile={euckrFilename}
 
 아이템 필드: title("[대분류] 서식제목"), fileSysName(HWP), fileSysName3(PDF),
              fileSysName2(기타), fileSysExname(기타)
@@ -14,6 +14,7 @@ import random
 import math
 import logging
 from datetime import date
+from urllib.parse import quote
 
 import requests
 
@@ -55,8 +56,13 @@ def _parse_title(raw):
     return (m.group(1).strip(), m.group(2).strip()) if m else ("", raw.strip())
 
 
-def _dl_url(fname):
-    return ECFS_DOWNLOAD_BASE.format(filename=fname) if fname else ""
+def _dl_url(sys_nm, org_nm=""):
+    if not sys_nm:
+        return ""
+    url = ECFS_DOWNLOAD_BASE.format(filename=sys_nm)
+    if org_nm:
+        url += "&downFile=" + quote(org_nm.encode("euc-kr", errors="replace"))
+    return url
 
 
 def _ext(org_name, sys_name=""):
@@ -100,7 +106,7 @@ def _parse_items(items):
                 "중분류": "",
                 "서식제목": 서식제목,
                 "파일형식": _ext(org_nm, sys_nm),
-                "다운로드URL": _dl_url(sys_nm),
+                "다운로드URL": _dl_url(sys_nm, org_nm or ""),
                 "수집일시": TODAY,
             })
             added = True
@@ -108,6 +114,17 @@ def _parse_items(items):
             rows.append({"수집처": ECFS_NAME, "대분류": 대분류, "중분류": "",
                          "서식제목": 서식제목, "파일형식": "", "다운로드URL": "", "수집일시": TODAY})
     return rows
+
+
+def download_file(download_url: str, save_path: str) -> bool:
+    session = requests.Session()
+    session.headers.update({**HEADERS, "Referer": _REFERER})
+    response = session.get(download_url, timeout=30)
+    if response.status_code == 200 and len(response.content) > 100:
+        with open(save_path, "wb") as f:
+            f.write(response.content)
+        return True
+    return False
 
 
 def scrape(sample_mode=False, on_progress=None, known_keys=None):

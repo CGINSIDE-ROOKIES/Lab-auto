@@ -2,7 +2,7 @@
 전자공탁 공탁양식 스크래퍼
 방식: requests JSON API 직접 호출
 API: POST /pjg/pjg172/selectEdpsFrmlLst.on
-다운로드: POST /pjg/pjgedm/blobDown.on (파라미터를 쿼리스트링으로 표기)
+다운로드: POST /pjg/pjgedm/blobDown.on (JSON body: dma_downloadFile)
 
 아이템 필드: dpsFrmlDvsCd(코드), dpsFrmlFileNm(서식명),
              dpsHwpFrmlFile/dpsDocxFrmlFile/dpsPdfFrmlFile/dpsWrtExmFile ("Y")
@@ -13,6 +13,7 @@ import random
 import math
 import logging
 from datetime import date
+from urllib.parse import urlparse, parse_qs
 
 import requests
 
@@ -29,6 +30,14 @@ _FILE_TYPES = [
     ("dpsPdfFrmlFile",  "PDF",  "pdf"),
     ("dpsWrtExmFile",   "GIF",  "gif"),
 ]
+
+# fileExtsPnlim → fileColumn 매핑
+_FILE_COL = {
+    "hwp": "dpsHwpFrmlFile",
+    "doc": "dpsDocxFrmlFile",
+    "pdf": "dpsPdfFrmlFile",
+    "gif": "dpsWrtExmFile",
+}
 
 
 def _delay():
@@ -87,6 +96,34 @@ def _parse_items(items):
             rows.append({"수집처": EKT_NAME, "대분류": "공탁", "중분류": "",
                          "서식제목": 서식제목, "파일형식": "", "다운로드URL": "", "수집일시": TODAY})
     return rows
+
+
+def download_file(download_url: str, save_path: str) -> bool:
+    qs = parse_qs(urlparse(download_url).query)
+    dvs_cd   = qs.get("dpsFrmlDvsCd", [""])[0]
+    file_ext = qs.get("fileExtsPnlim", [""])[0]
+    file_col = _FILE_COL.get(file_ext, "")
+
+    session = requests.Session()
+    session.headers.update({**HEADERS, "Referer": _REFERER})
+    session.get(_REFERER, timeout=15)
+    response = session.post(
+        EKT_DOWNLOAD_BASE,
+        json={"dma_downloadFile": {
+            "kindCode": "03",
+            "dpsFrmlDvsCd": dvs_cd,
+            "fileExtsPnlim": file_ext,
+            "fileColumn": file_col,
+            "fileNm": "dpsFrmlFileNm",
+        }},
+        headers={"Content-Type": "application/json; charset=UTF-8"},
+        timeout=30,
+    )
+    if response.status_code == 200 and len(response.content) > 100:
+        with open(save_path, "wb") as f:
+            f.write(response.content)
+        return True
+    return False
 
 
 def scrape(sample_mode=False, on_progress=None, known_keys=None):
