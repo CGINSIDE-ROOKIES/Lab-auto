@@ -3,11 +3,13 @@
 
 실행: streamlit run app.py
 """
+import base64
 import json
 import sys
 from datetime import date
 from pathlib import Path
 
+import requests as _req
 import streamlit as st
 import pandas as pd
 
@@ -62,22 +64,81 @@ def _migrate_snapshot(old_snap):
         if source == "대한법률구조공단":
             new_snap["klac"][new_key] = dt
         else:
-            # ECFS/EKT 모두 "전자소송포털" → 양쪽에 추가 (서식제목이 달라 오탐 없음)
             new_snap["ecfs"][new_key] = dt
             new_snap["ekt"][new_key] = dt
-    SNAPSHOT_FILE.write_text(json.dumps(new_snap, ensure_ascii=False, indent=2), encoding="utf-8")
     return new_snap
 
+# ── GitHub snapshot 저장소 ────────────────────────────────────────
+def _gh_config():
+    try:
+        token = st.secrets.get("GITHUB_TOKEN", "")
+        repo  = st.secrets.get("GITHUB_REPO", "")
+        branch = st.secrets.get("GITHUB_BRANCH", "main")
+    except Exception:
+        return None, None, None
+    if not token or not repo:
+        return None, None, None
+    return token, repo, branch
+
+_GH_SNAP_PATH = "legal_scraper/data/snapshot.json"
+
+def _gh_load():
+    token, repo, branch = _gh_config()
+    if not token:
+        return None, None
+    url = f"https://api.github.com/repos/{repo}/contents/{_GH_SNAP_PATH}"
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+    try:
+        r = _req.get(url, headers=headers, params={"ref": branch}, timeout=10)
+        if r.status_code == 404:
+            return None, None
+        r.raise_for_status()
+        data = r.json()
+        content = json.loads(base64.b64decode(data["content"]).decode("utf-8"))
+        return content, data["sha"]
+    except Exception as e:
+        st.warning(f"GitHub snapshot 읽기 실패: {e}")
+        return None, None
+
+def _gh_save(snap_dict, sha):
+    token, repo, branch = _gh_config()
+    if not token:
+        return
+    url = f"https://api.github.com/repos/{repo}/contents/{_GH_SNAP_PATH}"
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+    payload = {
+        "message": "auto: snapshot 업데이트",
+        "content": base64.b64encode(
+            json.dumps(snap_dict, ensure_ascii=False, indent=2).encode("utf-8")
+        ).decode("utf-8"),
+        "branch": branch,
+    }
+    if sha:
+        payload["sha"] = sha
+    try:
+        r = _req.put(url, headers=headers, json=payload, timeout=15)
+        r.raise_for_status()
+        st.session_state["_snap_sha"] = r.json()["content"]["sha"]
+    except Exception as e:
+        st.warning(f"GitHub snapshot 저장 실패: {e}")
+
 def load_snapshot():
+    # GitHub 우선, 없으면 로컬 파일
+    content, sha = _gh_load()
+    if content is not None:
+        st.session_state["_snap_sha"] = sha
+        if content and not isinstance(next(iter(content.values())), dict):
+            content = _migrate_snapshot(content)
+        return content
+    # 로컬 fallback
     if not SNAPSHOT_FILE.exists():
         return None
     data = json.loads(SNAPSHOT_FILE.read_text(encoding="utf-8"))
-    # 구버전(flat) 감지 → 자동 마이그레이션
     if data and not isinstance(next(iter(data.values())), dict):
-        return _migrate_snapshot(data)
+        data = _migrate_snapshot(data)
     return data
 
-def save_snapshot(rows):
+def _build_snap_dict(rows):
     new_snap = {"klac": {}, "ecfs": {}, "ekt": {}}
     for r in rows:
         key = _site_key(r)
@@ -88,7 +149,18 @@ def save_snapshot(rows):
             new_snap["ekt"][key] = dt
         else:
             new_snap["ecfs"][key] = dt
-    SNAPSHOT_FILE.write_text(json.dumps(new_snap, ensure_ascii=False, indent=2), encoding="utf-8")
+    return new_snap
+
+def _persist_snap(snap_dict):
+    """GitHub에 저장, 로컬에도 백업"""
+    _gh_save(snap_dict, st.session_state.get("_snap_sha"))
+    try:
+        SNAPSHOT_FILE.write_text(json.dumps(snap_dict, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+def save_snapshot(rows):
+    _persist_snap(_build_snap_dict(rows))
 
 
 # ── 사이드바 ──────────────────────────────────────────────────────
@@ -352,10 +424,7 @@ with tab_scrape:
                         existing_snap["ekt"][key] = dt
                     else:
                         existing_snap["ecfs"][key] = dt
-                SNAPSHOT_FILE.write_text(
-                    json.dumps(existing_snap, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
+                _persist_snap(existing_snap)
                 # 로컬 파일 저장
                 out_path2 = OUTPUT_DIR / f"legal_forms_INCR_{TODAY_STR}.xlsx"
                 write_raw(incr_rows, out_path2)
