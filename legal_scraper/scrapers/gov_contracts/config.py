@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-ScrapeType = Literal["board_get", "board_post", "search_get", "playwright", "direct_url"]
+ScrapeType = Literal["board_get", "board_post", "search_get", "playwright"]
 
 
 @dataclass
@@ -131,12 +131,5 @@ MINISTRIES: list[MinistryConfig] = [
         scrape_type="playwright",
         base_url="https://www.moip.go.kr/ko/searchView.do",
         notes="JS 렌더링",
-    ),
-    # ── 유형 D: 파일 직접 URL ─────────────────────────────────────
-    MinistryConfig(
-        name="감사원",
-        scrape_type="direct_url",
-        base_url="https://www.bai.go.kr/bai/down/etc/auditBoardRegulation",
-        notes="직접 URL 1건",
     ),
 ]

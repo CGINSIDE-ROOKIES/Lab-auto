@@ -30,10 +30,10 @@ class FormItem:
             self.file_ext = parts[-1].lower() if len(parts) == 2 else ""
 
     def has_contract_keyword(self) -> bool:
-        """파일명 우선, 없으면 제목에서 '계약서' 검사"""
-        if self.file_name:
-            return "계약서" in self.file_name
-        return "계약서" in self.title
+        """파일명 우선, 없으면 제목에서 계약서·약정서 검사"""
+        from .utils.file_filter import CONTRACT_KEYWORDS
+        target = self.file_name if self.file_name else self.title
+        return any(kw in target for kw in CONTRACT_KEYWORDS)
 
 
 _DEFAULT_HEADERS = {
