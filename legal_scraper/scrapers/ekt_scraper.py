@@ -18,6 +18,7 @@ from urllib.parse import urlparse, parse_qs
 import requests
 
 from config import EKT_API_URL, EKT_DOWNLOAD_BASE, EKT_NAME, EKT_PAGE_SIZE, HEADERS, REQUEST_DELAY
+from utils.ekt_proxy import proxy_url as _proxy_url
 
 log = logging.getLogger("legal_scraper.ekt")
 TODAY = date.today().strftime("%Y-%m-%d")
@@ -57,7 +58,7 @@ def _fetch(session, page_no):
 
 
 def _dl_url(dvs_cd, file_ext):
-    return f"{EKT_DOWNLOAD_BASE}?kindCode=03&dpsFrmlDvsCd={dvs_cd}&fileExtsPnlim={file_ext}"
+    return _proxy_url(dvs_cd, file_ext)
 
 
 def _snap_key(r):

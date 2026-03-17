@@ -27,6 +27,9 @@ from utils.excel_writer import (
     merge_files, merged_df_to_bytes, write_merged, EXPECTED_COLUMNS,
 )
 from utils.logger import setup_logger
+from utils.ekt_proxy import start as _start_ekt_proxy
+
+_start_ekt_proxy()
 
 logger = setup_logger()
 st.set_page_config(page_title="법률서식 수집·분류", page_icon="⚖️", layout="wide")
