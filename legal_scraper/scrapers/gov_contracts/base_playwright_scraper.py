@@ -26,6 +26,7 @@ class BasePlaywrightScraper(BaseGovScraper):
                     "Chrome/124.0.0.0 Safari/537.36"
                 ),
                 locale="ko-KR",
+                ignore_https_errors=True,
             )
             page = context.new_page()
             try:
