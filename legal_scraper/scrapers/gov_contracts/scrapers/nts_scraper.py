@@ -149,6 +149,10 @@ class NtsScraper(BaseGovScraper):
         if not file_url:
             return None
 
+        # 파일명: 제목 + 확장자 (다운로드 URL에서 별도 추출 불가)
+        if not file_name:
+            file_name = f"{title}.{file_ext}" if file_ext else title
+
         return FormItem(
             ministry=MINISTRY_NAME,
             title=title,
