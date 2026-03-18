@@ -13,6 +13,9 @@ import logging
 from urllib.parse import parse_qs, urlparse, unquote
 from datetime import date
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -27,7 +30,7 @@ def _delay():
 
 
 def _get_tabs(session):
-    resp = session.get(KLAC_URL, timeout=15)
+    resp = session.get(KLAC_URL, timeout=15, verify=False)
     soup = BeautifulSoup(resp.content, "lxml")
     tabs = []
     for li in soup.select("ul.col-6 li"):
@@ -47,7 +50,7 @@ def _fetch_page(session, folder_id, page_index):
         "listNm": "",
         "searchCnd": "0",
         "scdFolderId": "",
-    }, timeout=15)
+    }, timeout=15, verify=False)
     return BeautifulSoup(resp.content, "lxml")
 
 
