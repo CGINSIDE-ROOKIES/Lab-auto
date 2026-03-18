@@ -65,8 +65,14 @@ class BaseGovScraper(ABC):
 
     # ── 공통 구현 ──────────────────────────────────────────────────
 
+    _EXCLUDED_EXTS = {"jpg", "jpeg", "png", "gif", "bmp", "svg", "webp"}
+
     def filter_by_keyword(self, items: list[FormItem]) -> list[FormItem]:
-        return [item for item in items if item.has_contract_keyword()]
+        return [
+            item for item in items
+            if item.has_contract_keyword()
+            and item.file_ext.lower() not in self._EXCLUDED_EXTS
+        ]
 
     def run(self) -> list[FormItem]:
         items = self.fetch_items()
