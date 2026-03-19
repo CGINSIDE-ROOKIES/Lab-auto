@@ -2,7 +2,7 @@
 계약서 관련 파일/게시글 필터링
 """
 
-CONTRACT_KEYWORDS = ["계약서", "약정서"]
+CONTRACT_KEYWORDS = ["계약", "약정서"]
 
 
 def is_contract_file(file_name: str, post_title: str = "") -> bool:
