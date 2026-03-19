@@ -166,10 +166,6 @@ class MsitScraper(BaseGovScraper):
         raw_date = fields.get("pstg_bgng_dt", "")
         registered_date = raw_date[:10] if raw_date else ""
 
-        # 키워드 미포함이면 상세 페이지 방문 스킵
-        if not any(kw in file_dc for kw in CONTRACT_KEYWORDS):
-            return
-
         if source_url in seen_detail_urls:
             return
         seen_detail_urls.add(source_url)
@@ -218,7 +214,7 @@ class MsitScraper(BaseGovScraper):
                     registered_date = tag.get_text(strip=True)
                     break
 
-        for li in soup.select("ul.down_file li"):
+        for li in soup.select("ul.down_file li, ul.down_file_new li"):
             # 파일명: ico_file_* 클래스 a 태그 텍스트
             a_file = li.select_one("a[class*='ico_file']")
             file_name = a_file.get_text(strip=True) if a_file else ""
