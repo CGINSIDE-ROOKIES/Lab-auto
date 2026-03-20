@@ -21,6 +21,7 @@ import re
 import time
 from urllib.parse import quote
 
+import requests
 from bs4 import BeautifulSoup
 
 from ..base_scraper import BaseGovScraper, FormItem
@@ -62,12 +63,24 @@ class MogefScraper(BaseGovScraper):
     def __init__(self, download_dir: str = "downloads/gov_contracts/성평등가족부"):
         super().__init__()
         self.download_dir = download_dir
+        self._init_session()
+
+    def _init_session(self) -> None:
+        """세션 초기화 (ConnectionReset 후 재시도 시에도 호출)"""
+        self.session = requests.Session()
         self.session.verify = False
         self.session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
             "Content-Type": "application/x-www-form-urlencoded",
             "Referer": SOURCE_URL,
             "Origin": BASE_URL,
+            "Connection": "close",
         })
 
     def fetch_items(self) -> list[FormItem]:
@@ -105,8 +118,9 @@ class MogefScraper(BaseGovScraper):
         keyword: str,
         category: str,
         page: int,
+        max_retries: int = 3,
     ) -> tuple[BeautifulSoup | None, int]:
-        """검색 결과 페이지 요청 → (soup, 전체 페이지 수)"""
+        """검색 결과 페이지 요청 → (soup, 전체 페이지 수). ConnectionReset 시 재시도."""
         data = {
             **_BASE_PARAMS,
             "searchTerm": keyword,
@@ -114,26 +128,40 @@ class MogefScraper(BaseGovScraper):
             "currentPage": str(page),
             "category": category,
         }
-        try:
-            resp = self.session.post(SEARCH_URL, data=data, timeout=30, verify=False)
-            resp.raise_for_status()
-        except Exception as e:
-            print(f"[MOGEF] 요청 실패 (kw={keyword}, cat={category}, page={page}): {e}")
-            return None, 0
+        for attempt in range(max_retries):
+            if attempt > 0:
+                wait = 2 ** attempt
+                print(f"[MOGEF] 재시도 {attempt}/{max_retries - 1}, {wait}초 대기 "
+                      f"(kw={keyword}, cat={category}, page={page})")
+                time.sleep(wait)
+                self._init_session()  # 서버가 연결을 끊었으므로 세션 재생성
 
-        soup = BeautifulSoup(resp.content, "html.parser")
-
-        # 전체 페이지 수: hidden input[name="pageSize"]
-        ps_input = soup.find("input", {"name": "pageSize"})
-        total_pages = 1
-        if ps_input:
             try:
-                val = int(ps_input.get("value", "1") or "1")
-                total_pages = max(val, 1)
-            except ValueError:
-                pass
+                resp = self.session.post(SEARCH_URL, data=data, timeout=30, verify=False)
+                resp.raise_for_status()
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"[MOGEF] 요청 실패 (kw={keyword}, cat={category}, page={page}, "
+                          f"시도={attempt + 1}): {e}")
+                    continue
+                print(f"[MOGEF] 최종 실패 (kw={keyword}, cat={category}, page={page}): {e}")
+                return None, 0
 
-        return soup, total_pages
+            soup = BeautifulSoup(resp.content, "html.parser")
+
+            # 전체 페이지 수: hidden input[name="pageSize"]
+            ps_input = soup.find("input", {"name": "pageSize"})
+            total_pages = 1
+            if ps_input:
+                try:
+                    val = int(ps_input.get("value", "1") or "1")
+                    total_pages = max(val, 1)
+                except ValueError:
+                    pass
+
+            return soup, total_pages
+
+        return None, 0
 
     def _parse_items(
         self,

@@ -250,11 +250,31 @@ with tab_full:
             st.session_state.gc_done      = True
 
         if st.session_state.gc_done:
-            _show_results(
-                st.session_state.gc_new_items,
-                label="신규 수집",
-                file_prefix="gov_contracts_NEW",
-            )
+            all_items_res  = st.session_state.gc_items
+            new_items_res  = st.session_state.gc_new_items
+
+            st.divider()
+
+            # ── 전체 수집 요약 ──────────────────────────────────
+            col_total, col_new = st.columns(2)
+            col_total.metric("전체 수집", f"{len(all_items_res):,}건")
+            col_new.metric("신규 항목", f"{len(new_items_res):,}건")
+
+            # 부처별 전체 수집건수
+            if all_items_res:
+                m_counts: dict[str, int] = {}
+                for item in all_items_res:
+                    m_counts[item.ministry] = m_counts.get(item.ministry, 0) + 1
+                st.caption("부처별 수집 결과")
+                cols = st.columns(min(len(m_counts), 6))
+                for idx, (ministry, cnt) in enumerate(
+                    sorted(m_counts.items(), key=lambda x: -x[1])
+                ):
+                    cols[idx % len(cols)].metric(ministry, f"{cnt:,}건")
+
+            # ── 신규 항목 ───────────────────────────────────────
+            st.divider()
+            _show_results(new_items_res, label="신규 항목", file_prefix="gov_contracts_NEW")
 
 
 # ═══════════════════════════════════════════════════════════════
