@@ -79,8 +79,15 @@ def _run_one(name: str, text_ph, bar_ph) -> list[FormItem]:
         return []
     try:
         bar_ph.progress(0.1)
+        text_ph.markdown("*초기화 중...*")
         scraper = cls()
-        bar_ph.progress(0.4)
+        bar_ph.progress(0.3)
+        text_ph.markdown("*수집 중...*")
+
+        def _cb(count: int, _msg: str) -> None:
+            text_ph.markdown(f"🔄 **{count:,}건** 수집 중...")
+
+        scraper.on_progress = _cb
         items = scraper.run()
         bar_ph.progress(1.0)
         text_ph.markdown(f"✅ **{len(items):,}건** 수집 완료")

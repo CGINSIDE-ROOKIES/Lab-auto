@@ -6,7 +6,7 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 import requests
 from bs4 import BeautifulSoup
@@ -55,6 +55,8 @@ class BaseGovScraper(ABC):
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update(_DEFAULT_HEADERS)
+        # 실시간 진행도 콜백: on_progress(수집건수, 메시지)
+        self.on_progress: Callable[[int, str], None] | None = None
 
     # ── 추상 메서드 ────────────────────────────────────────────────
 

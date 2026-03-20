@@ -20,6 +20,7 @@ import re
 import time
 from datetime import datetime
 
+import requests
 from bs4 import BeautifulSoup
 
 from ..base_scraper import BaseGovScraper, FormItem
@@ -51,8 +52,24 @@ class MojScraper(BaseGovScraper):
 
     def __init__(self):
         super().__init__()
-        # 세션 쿠키 확보 (검색 결과 렌더링에 필요)
-        self.session.get(SEARCH_URL, verify=False, timeout=30)
+        self._init_session()
+
+    def _init_session(self) -> None:
+        """세션 초기화 + 쿠키 확보 (ConnectionReset 후 재시도 시에도 호출)"""
+        self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Connection": "close",
+        })
+        try:
+            self.session.get(SEARCH_URL, verify=False, timeout=30)
+        except Exception:
+            pass  # GET 실패 시 POST 단계에서 재시도
 
     # ── 키워드 필터 재정의 (전역 CONTRACT_KEYWORDS 와 독립) ─────────────
 
@@ -90,6 +107,9 @@ class MojScraper(BaseGovScraper):
             items_on_page = self._parse_items(soup, seen_file_urls)
             all_items.extend(items_on_page)
 
+            if self.on_progress:
+                self.on_progress(len(all_items), f"{len(all_items)}건 수집 중...")
+
             if not items_on_page:
                 break
 
@@ -103,7 +123,7 @@ class MojScraper(BaseGovScraper):
 
             start_count += VIEW_COUNT
 
-    def _post_search(self, keyword: str, start_count: int) -> BeautifulSoup:
+    def _post_search(self, keyword: str, start_count: int, max_retries: int = 3) -> BeautifulSoup:
         data = {
             "startCount": str(start_count),
             "viewCount": str(VIEW_COUNT),
@@ -122,14 +142,30 @@ class MojScraper(BaseGovScraper):
             "mReQuery": "1",
             "mRealQuery": "",
         }
-        time.sleep(self.request_delay)
-        resp = self.session.post(
-            SEARCH_URL, data=data, verify=False, timeout=30,
-            headers=self._POST_HEADERS,
-        )
-        resp.raise_for_status()
-        resp.encoding = "utf-8"
-        return BeautifulSoup(resp.text, "html.parser")
+        for attempt in range(max_retries):
+            if attempt > 0:
+                wait = 2 ** attempt
+                print(f"[MOJ] 재시도 {attempt}/{max_retries - 1}, {wait}초 대기 "
+                      f"(startCount={start_count})")
+                time.sleep(wait)
+                self._init_session()  # 세션 재생성 후 쿠키 재확보
+
+            try:
+                time.sleep(self.request_delay)
+                resp = self.session.post(
+                    SEARCH_URL, data=data, verify=False, timeout=30,
+                    headers=self._POST_HEADERS,
+                )
+                resp.raise_for_status()
+                resp.encoding = "utf-8"
+                return BeautifulSoup(resp.text, "html.parser")
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"[MOJ] 요청 실패 (startCount={start_count}, "
+                          f"시도={attempt + 1}): {e}")
+                    continue
+                print(f"[MOJ] 최종 실패 (startCount={start_count}): {e}")
+                return BeautifulSoup("", "html.parser")  # 빈 soup → 루프 종료
 
     # ── 결과 파싱 ─────────────────────────────────────────────────────
 

@@ -58,6 +58,8 @@ class FtcScraper(BaseGovScraper):
                     break
 
                 items.extend(rows)
+                if self.on_progress:
+                    self.on_progress(len(items), f"{len(items)}건 수집 중...")
 
         return items
 
