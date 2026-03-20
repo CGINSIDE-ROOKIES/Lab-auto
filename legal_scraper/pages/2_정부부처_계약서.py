@@ -27,10 +27,10 @@ _OUTPUT_DIR = Path(__file__).parent.parent / "output"
 _REQUESTS_MINISTRIES = [
     "공정거래위원회", "법무부", "성평등가족부", "과학기술정보통신부",
     "농림축산식품부", "국세청", "경찰청", "국토교통부",
-    "식품의약품안전처", "감사원", "고용노동부",
+    "식품의약품안전처", "감사원", "고용노동부", "문화체육관광부",
 ]
 _PLAYWRIGHT_MINISTRIES = [
-    "문화체육관광부", "산업통상자원부", "보건복지부", "중소벤처기업부",
+    "산업통상자원부", "보건복지부", "중소벤처기업부",
     "국가유산청", "지식재산처", "농촌진흥청", "행정안전부",
 ]
 ALL_MINISTRIES = _REQUESTS_MINISTRIES + _PLAYWRIGHT_MINISTRIES
