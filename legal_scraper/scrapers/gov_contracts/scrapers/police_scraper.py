@@ -130,10 +130,12 @@ class PoliceScraper(BaseGovScraper):
     # ── BaseGovScraper 구현 ────────────────────────────────────────
 
     def filter_by_keyword(self, items: list[FormItem]) -> list[FormItem]:
+        from ..utils.file_filter import EXCLUDE_TITLE_KEYWORDS
         return [
             item for item in items
             if any(kw in (item.file_name or item.title) for kw in POLICE_CONTRACT_KEYWORDS)
             and item.file_ext.lower() not in self._EXCLUDED_EXTS
+            and not any(kw in item.title for kw in EXCLUDE_TITLE_KEYWORDS)
         ]
 
     def fetch_items(self) -> list[FormItem]:

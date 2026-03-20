@@ -4,6 +4,9 @@
 
 CONTRACT_KEYWORDS = ["계약", "약정서"]
 
+# 제목에 이 단어가 포함되면 수집 제외 (전체 공통)
+EXCLUDE_TITLE_KEYWORDS = ["수의", "합격"]
+
 
 def is_contract_file(file_name: str, post_title: str = "") -> bool:
     """

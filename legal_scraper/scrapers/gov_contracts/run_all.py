@@ -23,10 +23,47 @@ from legal_scraper.scrapers.gov_contracts.utils.excel_writer import save_to_exce
 DOWNLOAD_BASE = "downloads/gov_contracts"
 OUTPUT_EXCEL = "outputs/gov_contracts_metadata.xlsx"
 
-# ── 부처별 스크래퍼 매핑 (추후 채울 예정) ─────────────────────────────
+# ── 부처별 스크래퍼 매핑 ──────────────────────────────────────────────
+from legal_scraper.scrapers.gov_contracts.scrapers.ftc_scraper import FtcScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.moj_scraper import MojScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.mogef_scraper import MogefScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.msit_scraper import MsitScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.mcst_scraper import McstScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.motie_scraper import MotieScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.police_scraper import PoliceScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.mohw_scraper import MohwScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.mafra_scraper import MafraScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.nts_scraper import NtsScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.mss_scraper import MssScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.khs_scraper import KhsScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.moip_scraper import MoipScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.rda_scraper import RdaScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.molit_scraper import MolitScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.mfds_scraper import MfdsScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.mois_scraper import MoisScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.bai_scraper import BaiScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.moel_scraper import MoelScraper
+
 scraper_map: dict[str, type] = {
-    # 예시:
-    # "공정거래위원회": FtcScraper,
+    "공정거래위원회": FtcScraper,
+    "법무부": MojScraper,
+    "성평등가족부": MogefScraper,
+    "과학기술정보통신부": MsitScraper,
+    "문화체육관광부": McstScraper,
+    "산업통상자원부": MotieScraper,
+    "경찰청": PoliceScraper,
+    "보건복지부": MohwScraper,
+    "농림축산식품부": MafraScraper,
+    "국세청": NtsScraper,
+    "중소벤처기업부": MssScraper,
+    "국가유산청": KhsScraper,
+    "지식재산처": MoipScraper,
+    "농촌진흥청": RdaScraper,
+    "국토교통부": MolitScraper,
+    "식품의약품안전처": MfdsScraper,
+    "행정안전부": MoisScraper,
+    "감사원": BaiScraper,
+    "고용노동부": MoelScraper,
 }
 
 

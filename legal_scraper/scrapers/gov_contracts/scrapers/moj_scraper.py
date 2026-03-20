@@ -57,10 +57,12 @@ class MojScraper(BaseGovScraper):
     # ── 키워드 필터 재정의 (전역 CONTRACT_KEYWORDS 와 독립) ─────────────
 
     def filter_by_keyword(self, items: list[FormItem]) -> list[FormItem]:
+        from ..utils.file_filter import EXCLUDE_TITLE_KEYWORDS
         return [
             item for item in items
             if any(kw in (item.file_name or item.title) for kw in MOJ_CONTRACT_KEYWORDS)
             and item.file_ext.lower() not in self._EXCLUDED_EXTS
+            and not any(kw in item.title for kw in EXCLUDE_TITLE_KEYWORDS)
         ]
 
     # ── 수집 진입점 ───────────────────────────────────────────────────
