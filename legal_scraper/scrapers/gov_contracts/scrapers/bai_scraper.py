@@ -32,6 +32,9 @@ class BaiScraper(BaseGovScraper):
     def __init__(self, download_dir: str = "downloads/gov_contracts/감사원"):
         super().__init__()
         self.download_dir = download_dir
+
+    def _init_session(self) -> None:
+        super()._init_session()
         self.session.verify = False
         self.session.headers.update({
             "Accept": "application/json, text/plain, */*",
@@ -60,22 +63,21 @@ class BaiScraper(BaseGovScraper):
 
     def _fetch_list_page(self, page: int) -> tuple[list[dict], int]:
         """목록 API 호출 → (게시글 목록, 전체 페이지 수)"""
+        params = {
+            "brdId": BRD_ID,
+            "searchType": "0",
+            "searchText": "",
+            "fromRegiDt": "",
+            "toRegiDt": "",
+            "searchYear": "",
+            "searchDvsnCd": "",
+            "size": str(PAGE_SIZE),
+            "index": "0",
+            "page": str(page),
+        }
         try:
-            resp = self.session.get(
-                LIST_URL,
-                params={
-                    "brdId": BRD_ID,
-                    "searchType": "0",
-                    "searchText": "",
-                    "fromRegiDt": "",
-                    "toRegiDt": "",
-                    "searchYear": "",
-                    "searchDvsnCd": "",
-                    "size": str(PAGE_SIZE),
-                    "index": "0",
-                    "page": str(page),
-                },
-                timeout=30,
+            resp = self._request_with_retry(
+                lambda: self.session.get(LIST_URL, params=params, timeout=30)
             )
             resp.raise_for_status()
             data = resp.json()
@@ -98,11 +100,10 @@ class BaiScraper(BaseGovScraper):
         registered_date = (post.get("regiDt") or "")[:10]  # "2024-11-26T00:00:00" → "2024-11-26"
         department = post.get("chgrNm", "")
 
+        detail_params = {"brdId": BRD_ID, "postNo": str(post_no)}
         try:
-            resp = self.session.get(
-                DETAIL_URL,
-                params={"brdId": BRD_ID, "postNo": str(post_no)},
-                timeout=30,
+            resp = self._request_with_retry(
+                lambda: self.session.get(DETAIL_URL, params=detail_params, timeout=30)
             )
             resp.raise_for_status()
             detail = resp.json()

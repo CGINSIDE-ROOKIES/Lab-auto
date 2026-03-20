@@ -3,6 +3,7 @@
 """
 import json
 import sys
+import time
 from datetime import date, datetime
 from pathlib import Path
 
@@ -225,11 +226,16 @@ with tab_full:
                 ministry_uis[m] = (t, b)
 
             all_items: list[FormItem] = []
-            for m in selected_ministries:
+            for idx, m in enumerate(selected_ministries):
                 t, b = ministry_uis[m]
                 t.markdown("*수집 중...*")
                 items = _run_one(m, t, b)
                 all_items.extend(items)
+                if idx < len(selected_ministries) - 1:
+                    next_m = selected_ministries[idx + 1]
+                    next_t, _ = ministry_uis[next_m]
+                    next_t.markdown("⏳ *잠시 후 시작...*")
+                    time.sleep(3)
 
             # snapshot 비교 → 신규 항목 추출
             snap = _load_snap()
@@ -324,11 +330,16 @@ with tab_incr:
                 ministry_uis2[m] = (t, b)
 
             all_items2: list[FormItem] = []
-            for m in selected_ministries:
+            for idx, m in enumerate(selected_ministries):
                 t, b = ministry_uis2[m]
                 t.markdown("*수집 중...*")
                 items = _run_one(m, t, b)
                 all_items2.extend(items)
+                if idx < len(selected_ministries) - 1:
+                    next_m = selected_ministries[idx + 1]
+                    next_t, _ = ministry_uis2[next_m]
+                    next_t.markdown("⏳ *잠시 후 시작...*")
+                    time.sleep(3)
 
             # 신규 항목만 필터
             known = existing_snap

@@ -69,23 +69,34 @@ class PoliceScraper(BaseGovScraper):
     # ── 내부 헬퍼 ──────────────────────────────────────────────────
 
     def _post(self, keyword: str, page_num: int) -> str:
-        time.sleep(self.request_delay)
-        r = self.session.post(
-            SEARCH_URL,
-            data={
-                "searchTerm": keyword,
-                "colTarget": "doc",
-                "pageListSize": "10",
-                "q_currPage": str(page_num),
-                "currentPage": str(page_num),
-                "orderBy": "date",
-                "gubun": "1",
-                "researchTerm": "",
-            },
-            timeout=30,
-        )
-        r.raise_for_status()
-        return r.text
+        data = {
+            "searchTerm": keyword,
+            "colTarget": "doc",
+            "pageListSize": "10",
+            "q_currPage": str(page_num),
+            "currentPage": str(page_num),
+            "orderBy": "date",
+            "gubun": "1",
+            "researchTerm": "",
+        }
+        max_retries = 3
+        for attempt in range(max_retries):
+            if attempt > 0:
+                wait = 2 ** attempt
+                print(f"[POLICE] 재시도 {attempt}/{max_retries - 1}, {wait}초 대기")
+                time.sleep(wait)
+                # curl_cffi 세션 재생성
+                self.session = cffi_requests.Session(impersonate="safari")
+            time.sleep(self.request_delay)
+            try:
+                r = self.session.post(SEARCH_URL, data=data, timeout=30)
+                r.raise_for_status()
+                return r.text
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"[POLICE] 요청 실패 (시도={attempt + 1}): {e}")
+                    continue
+                raise
 
     def _get_last_page(self, html_text: str) -> int:
         """pagination 의 마지막 페이지 번호 반환 (없으면 1)"""

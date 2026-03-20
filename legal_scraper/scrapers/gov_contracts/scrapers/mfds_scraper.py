@@ -45,11 +45,12 @@ class MfdsScraper(BaseGovScraper):
     def __init__(self, download_dir: str = "downloads/gov_contracts/식품의약품안전처"):
         super().__init__()
         self.download_dir = download_dir
+
+    def _init_session(self) -> None:
+        super()._init_session()
         self.session.verify = False
         self.session.headers.update({
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
             "Referer": SOURCE_URL,
         })
@@ -88,7 +89,9 @@ class MfdsScraper(BaseGovScraper):
         """목록 페이지 → (seq 목록, 전체 페이지 수)"""
         params = {**_LIST_PARAMS, "srchWord": keyword, "page": str(page)}
         try:
-            resp = self.session.get(LIST_URL, params=params, timeout=30, verify=False)
+            resp = self._request_with_retry(
+                lambda: self.session.get(LIST_URL, params=params, timeout=30, verify=False)
+            )
             resp.raise_for_status()
         except Exception as e:
             print(f"[MFDS] 목록 조회 실패 (keyword={keyword}, page={page}): {e}")
@@ -129,7 +132,9 @@ class MfdsScraper(BaseGovScraper):
         """상세 페이지에서 파일 목록 추출"""
         detail_url = f"{DETAIL_BASE}/view.do?seq={seq}&srchWord={keyword}&srchTp=0&multi_itm_seq=0"
         try:
-            resp = self.session.get(detail_url, timeout=30, verify=False)
+            resp = self._request_with_retry(
+                lambda: self.session.get(detail_url, timeout=30, verify=False)
+            )
             resp.raise_for_status()
         except Exception as e:
             print(f"[MFDS] 상세 조회 실패 (seq={seq}): {e}")

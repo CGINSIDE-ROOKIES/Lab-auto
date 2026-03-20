@@ -31,6 +31,9 @@ class MoelScraper(BaseGovScraper):
     def __init__(self, download_dir: str = "downloads/gov_contracts/고용노동부"):
         super().__init__()
         self.download_dir = download_dir
+
+    def _init_session(self) -> None:
+        super()._init_session()
         self.session.verify = False
 
     def fetch_items(self) -> list[FormItem]:
@@ -43,10 +46,12 @@ class MoelScraper(BaseGovScraper):
                 url = f"{LIST_URL}?searchText={urllib.parse.quote(keyword)}&pageIndex={page_num}"
                 time.sleep(self.request_delay)
                 try:
-                    resp = self.session.get(url, timeout=30)
+                    resp = self._request_with_retry(
+                        lambda: self.session.get(url, timeout=30)
+                    )
                     resp.raise_for_status()
                 except Exception as e:
-                    print(f"[MOEL] 목록 요청 오류: {e}")
+                    print(f"[MOEL] 목록 요청 최종 실패: {e}")
                     break
 
                 soup = BeautifulSoup(resp.text, "html.parser")
@@ -111,10 +116,12 @@ class MoelScraper(BaseGovScraper):
                     # 상세 페이지에서 파일 URL 추출
                     time.sleep(self.request_delay)
                     try:
-                        dresp = self.session.get(source_url, timeout=30)
+                        dresp = self._request_with_retry(
+                            lambda: self.session.get(source_url, timeout=30)
+                        )
                         dresp.raise_for_status()
                     except Exception as e:
-                        print(f"[MOEL] 상세 페이지 오류: {e}")
+                        print(f"[MOEL] 상세 페이지 최종 실패: {e}")
                         continue
 
                     detail_soup = BeautifulSoup(dresp.text, "html.parser")

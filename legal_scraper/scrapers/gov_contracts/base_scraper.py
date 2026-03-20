@@ -43,6 +43,7 @@ _DEFAULT_HEADERS = {
         "Chrome/124.0.0.0 Safari/537.36"
     ),
     "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Connection": "close",   # 매 요청마다 새 TCP 연결 사용 → Keep-Alive 리셋 방지
 }
 
 
@@ -53,10 +54,33 @@ class BaseGovScraper(ABC):
     request_delay: float = 1.0  # 요청 간 딜레이(초)
 
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update(_DEFAULT_HEADERS)
+        self._init_session()
         # 실시간 진행도 콜백: on_progress(수집건수, 메시지)
         self.on_progress: Callable[[int, str], None] | None = None
+
+    def _init_session(self) -> None:
+        """세션 재초기화. 서브클래스에서 오버라이드 가능."""
+        self.session = requests.Session()
+        self.session.headers.update(_DEFAULT_HEADERS)
+
+    def _request_with_retry(self, fn: Callable, max_retries: int = 3):
+        """
+        fn()을 호출하고 실패 시 세션 재초기화 후 재시도.
+        모든 scrapers의 requests 호출에 공통 적용되는 재시도 래퍼.
+        """
+        for attempt in range(max_retries):
+            if attempt > 0:
+                wait = 2 ** attempt
+                print(f"[{self.ministry_name}] 재시도 {attempt}/{max_retries - 1}, {wait}초 대기")
+                time.sleep(wait)
+                self._init_session()
+            try:
+                return fn()
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"[{self.ministry_name}] 요청 실패 (시도={attempt + 1}): {e}")
+                    continue
+                raise
 
     # ── 추상 메서드 ────────────────────────────────────────────────
 
@@ -91,7 +115,9 @@ class BaseGovScraper(ABC):
         **kwargs,
     ) -> BeautifulSoup:
         time.sleep(self.request_delay)
-        resp = self.session.get(url, params=params, timeout=30, **kwargs)
+        resp = self._request_with_retry(
+            lambda: self.session.get(url, params=params, timeout=30, **kwargs)
+        )
         resp.raise_for_status()
         return BeautifulSoup(resp.text, "html.parser")
 
@@ -102,6 +128,8 @@ class BaseGovScraper(ABC):
         **kwargs,
     ) -> BeautifulSoup:
         time.sleep(self.request_delay)
-        resp = self.session.post(url, data=data, timeout=30, **kwargs)
+        resp = self._request_with_retry(
+            lambda: self.session.post(url, data=data, timeout=30, **kwargs)
+        )
         resp.raise_for_status()
         return BeautifulSoup(resp.text, "html.parser")

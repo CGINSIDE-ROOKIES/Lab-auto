@@ -34,21 +34,12 @@ class MsitScraper(BaseGovScraper):
 
     def __init__(self):
         super().__init__()
-        self._init_session()
 
     def _init_session(self) -> None:
-        self.session = requests.Session()
-        self.session.verify = False
+        super()._init_session()
         self.session.headers.update({
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
             "Referer": BASE_URL,
             "Origin": BASE_URL,
-            "Connection": "close",
         })
 
     def fetch_items(self) -> list[FormItem]:
@@ -94,8 +85,8 @@ class MsitScraper(BaseGovScraper):
                 break
             page_num += 1
 
-    def _post_search(self, keyword: str, page_num: int, max_retries: int = 3) -> dict:
-        """POST 검색 → HTML에서 fcFile() 내 let dataJson 추출. ConnectionReset 시 재시도."""
+    def _post_search(self, keyword: str, page_num: int) -> dict:
+        """POST 검색 → HTML에서 fcFile() 내 let dataJson 추출."""
         empty = {"result": {"total_count": 0, "rows": []}}
         data = {
             "dateSt": "",
@@ -108,26 +99,17 @@ class MsitScraper(BaseGovScraper):
             "qtBefore": keyword,
             "qt": keyword,
         }
-        for attempt in range(max_retries):
-            if attempt > 0:
-                wait = 2 ** attempt
-                print(f"[MSIT] 재시도 {attempt}/{max_retries - 1}, {wait}초 대기 "
-                      f"(kw={keyword}, page={page_num})")
-                time.sleep(wait)
-                self._init_session()
-            try:
-                time.sleep(self.request_delay)
-                resp = self.session.post(SEARCH_URL, data=data, verify=False, timeout=30)
-                resp.raise_for_status()
-                resp.encoding = "utf-8"
-                return self._extract_fc_file_json(resp.text)
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    print(f"[MSIT] 요청 실패 (kw={keyword}, page={page_num}, "
-                          f"시도={attempt + 1}): {e}")
-                    continue
-                print(f"[MSIT] 최종 실패 (kw={keyword}, page={page_num}): {e}")
-                return empty
+        try:
+            time.sleep(self.request_delay)
+            resp = self._request_with_retry(
+                lambda: self.session.post(SEARCH_URL, data=data, verify=False, timeout=30)
+            )
+            resp.raise_for_status()
+            resp.encoding = "utf-8"
+            return self._extract_fc_file_json(resp.text)
+        except Exception as e:
+            print(f"[MSIT] 최종 실패 (kw={keyword}, page={page_num}): {e}")
+            return empty
 
     def _extract_fc_file_json(self, html: str) -> dict:
         """script 내 function fcFile() { let dataJson = {...}; } 에서 JSON 추출."""

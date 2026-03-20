@@ -33,6 +33,9 @@ class MafraScraper(BaseGovScraper):
     def __init__(self, download_dir: str = "downloads/gov_contracts/농림축산식품부"):
         super().__init__()
         self.download_dir = download_dir
+
+    def _init_session(self) -> None:
+        super()._init_session()
         self.session.verify = False
         self.session.headers.update({"Referer": SEARCH_URL})
 
@@ -59,10 +62,12 @@ class MafraScraper(BaseGovScraper):
                 }
                 time.sleep(self.request_delay)
                 try:
-                    resp = self.session.post(SEARCH_URL, data=data, timeout=30)
+                    resp = self._request_with_retry(
+                        lambda: self.session.post(SEARCH_URL, data=data, timeout=30)
+                    )
                     resp.raise_for_status()
                 except Exception as e:
-                    print(f"[MAFRA] POST 오류: {e}")
+                    print(f"[MAFRA] POST 최종 실패: {e}")
                     break
 
                 soup = BeautifulSoup(resp.text, "html.parser")
@@ -97,7 +102,9 @@ class MafraScraper(BaseGovScraper):
                     registered_date = ""
                     try:
                         time.sleep(self.request_delay)
-                        dresp = self.session.get(article_url, timeout=30)
+                        dresp = self._request_with_retry(
+                            lambda: self.session.get(article_url, timeout=30)
+                        )
                         dresp.raise_for_status()
                         dsoup = BeautifulSoup(dresp.text, "html.parser")
 
