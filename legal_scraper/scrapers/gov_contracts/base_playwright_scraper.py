@@ -37,6 +37,7 @@ class BasePlaywrightScraper(BaseGovScraper):
 
         def _run() -> None:
             if sys.platform == "win32":
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
                 loop = asyncio.ProactorEventLoop()
                 asyncio.set_event_loop(loop)
             try:
