@@ -34,6 +34,10 @@ _PLAYWRIGHT_MINISTRIES = [
     "국가유산청", "지식재산처", "농촌진흥청", "행정안전부",
 ]
 ALL_MINISTRIES = _REQUESTS_MINISTRIES + _PLAYWRIGHT_MINISTRIES
+_PLAYWRIGHT_SET = set(_PLAYWRIGHT_MINISTRIES)
+
+_INTER_DELAY  = 10   # 스크래퍼 간 기본 딜레이 (초)
+_GROUP_DELAY  = 120  # requests→Playwright 전환 전 IP 안정화 딜레이 (초)
 
 _GC_EXCEL_COLS = ["부처명", "서식제목", "첨부파일명", "파일확장자", "등록일", "다운로드URL"]
 
@@ -226,6 +230,7 @@ with tab_full:
                 ministry_uis[m] = (t, b)
 
             all_items: list[FormItem] = []
+            pw_pause_done = False
             for idx, m in enumerate(selected_ministries):
                 t, b = ministry_uis[m]
                 t.markdown("*수집 중...*")
@@ -234,8 +239,13 @@ with tab_full:
                 if idx < len(selected_ministries) - 1:
                     next_m = selected_ministries[idx + 1]
                     next_t, _ = ministry_uis[next_m]
-                    next_t.markdown("⏳ *잠시 후 시작...*")
-                    time.sleep(3)
+                    if next_m in _PLAYWRIGHT_SET and not pw_pause_done:
+                        pw_pause_done = True
+                        next_t.markdown(f"⏳ *IP 안정화 대기 중... ({_GROUP_DELAY}초)*")
+                        time.sleep(_GROUP_DELAY)
+                    else:
+                        next_t.markdown("⏳ *잠시 후 시작...*")
+                        time.sleep(_INTER_DELAY)
 
             # snapshot 비교 → 신규 항목 추출
             snap = _load_snap()
@@ -330,6 +340,7 @@ with tab_incr:
                 ministry_uis2[m] = (t, b)
 
             all_items2: list[FormItem] = []
+            pw_pause_done2 = False
             for idx, m in enumerate(selected_ministries):
                 t, b = ministry_uis2[m]
                 t.markdown("*수집 중...*")
@@ -338,8 +349,13 @@ with tab_incr:
                 if idx < len(selected_ministries) - 1:
                     next_m = selected_ministries[idx + 1]
                     next_t, _ = ministry_uis2[next_m]
-                    next_t.markdown("⏳ *잠시 후 시작...*")
-                    time.sleep(3)
+                    if next_m in _PLAYWRIGHT_SET and not pw_pause_done2:
+                        pw_pause_done2 = True
+                        next_t.markdown(f"⏳ *IP 안정화 대기 중... ({_GROUP_DELAY}초)*")
+                        time.sleep(_GROUP_DELAY)
+                    else:
+                        next_t.markdown("⏳ *잠시 후 시작...*")
+                        time.sleep(_INTER_DELAY)
 
             # 신규 항목만 필터
             known = existing_snap
