@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from scrapers.gov_contracts.run_all import scraper_map
 from scrapers.gov_contracts.base_scraper import FormItem
 from scrapers.gov_contracts.utils.excel_writer import to_bytes, COLUMNS
+from scrapers.gov_contracts.utils.excel_writer import save_to_excel
 
 st.set_page_config(page_title="정부부처 계약서 수집", page_icon="🏛️", layout="wide")
 
@@ -39,12 +40,14 @@ _GC_EXCEL_COLS = ["부처명", "서식제목", "첨부파일명", "파일확장�
 
 # ── Session State 초기화 ──────────────────────────────────────────
 for _key, _val in {
-    "gc_items":      [],
-    "gc_new_items":  [],
-    "gc_done":       False,
-    "gc_incr_items": [],
-    "gc_incr_done":  False,
-    "gc_incr_no_new": False,
+    "gc_items":               [],
+    "gc_new_items":           [],
+    "gc_done":                False,
+    "gc_failed_ministries":   [],
+    "gc_incr_items":          [],
+    "gc_incr_done":           False,
+    "gc_incr_no_new":         False,
+    "gc_incr_failed_ministries": [],
 }.items():
     if _key not in st.session_state:
         st.session_state[_key] = _val
@@ -73,11 +76,12 @@ def _now_str() -> str:
 
 
 # ── 스크래퍼 실행 헬퍼 ───────────────────────────────────────────
-def _run_one(name: str, text_ph, bar_ph) -> list[FormItem]:
+def _run_one(name: str, text_ph, bar_ph) -> tuple[list[FormItem], bool]:
+    """(수집 결과, 성공 여부) 반환"""
     cls = scraper_map.get(name)
     if cls is None:
         text_ph.markdown("⚠️ 스크래퍼 미구현")
-        return []
+        return [], False
     try:
         bar_ph.progress(0.1)
         text_ph.markdown("*초기화 중...*")
@@ -92,11 +96,61 @@ def _run_one(name: str, text_ph, bar_ph) -> list[FormItem]:
         items = scraper.run()
         bar_ph.progress(1.0)
         text_ph.markdown(f"✅ **{len(items):,}건** 수집 완료")
-        return items
+        return items, True
     except Exception as e:
         bar_ph.progress(0.0)
         text_ph.markdown(f"❌ 오류: {e}")
-        return []
+        return [], False
+
+
+# ── 재수집 UI 헬퍼 ────────────────────────────────────────────────
+def _run_retry(
+    failed_list: list[str],
+    existing_items: list[FormItem],
+    tab_key: str,
+) -> tuple[list[FormItem], list[str]]:
+    """
+    failed_list 부처를 재수집 → 기존 items에 병합.
+    반환: (병합된 전체 items, 여전히 실패한 부처 목록)
+    """
+    retry_uis: dict[str, tuple] = {}
+    for m in failed_list:
+        c = st.container(border=True)
+        with c:
+            st.caption(f"🏛️ {m}")
+            t = st.empty()
+            b = st.progress(0.0)
+            t.markdown("*대기 중...*")
+        retry_uis[m] = (t, b)
+
+    retry_items: list[FormItem] = []
+    still_failing: list[str] = []
+    for idx, m in enumerate(failed_list):
+        t, b = retry_uis[m]
+        t.markdown("*수집 중...*")
+        items, ok = _run_one(m, t, b)
+        retry_items.extend(items)
+        if not ok:
+            still_failing.append(m)
+        if idx < len(failed_list) - 1:
+            next_t, _ = retry_uis[failed_list[idx + 1]]
+            next_t.markdown("⏳ *잠시 후 시작...*")
+            time.sleep(3)
+
+    # 기존 결과와 병합 (file_url 기준 dedup)
+    existing_urls = {item.file_url for item in existing_items}
+    new_unique = [item for item in retry_items if item.file_url not in existing_urls]
+    combined = existing_items + new_unique
+
+    # snapshot 갱신
+    if new_unique:
+        snap = _load_snap()
+        now = _now_str()
+        for item in new_unique:
+            snap.setdefault(item.ministry, {})[_snap_key(item)] = now
+        _save_snap(snap)
+
+    return combined, still_failing
 
 
 # ── 결과 표시 헬퍼 ────────────────────────────────────────────────
@@ -210,9 +264,10 @@ with tab_full:
         )
 
         if run_btn:
-            st.session_state.gc_done      = False
-            st.session_state.gc_items     = []
-            st.session_state.gc_new_items = []
+            st.session_state.gc_done               = False
+            st.session_state.gc_items              = []
+            st.session_state.gc_new_items          = []
+            st.session_state.gc_failed_ministries  = []
 
             st.subheader("진행 현황")
             ministry_uis: dict[str, tuple] = {}
@@ -226,11 +281,14 @@ with tab_full:
                 ministry_uis[m] = (t, b)
 
             all_items: list[FormItem] = []
+            failed: list[str] = []
             for idx, m in enumerate(selected_ministries):
                 t, b = ministry_uis[m]
                 t.markdown("*수집 중...*")
-                items = _run_one(m, t, b)
+                items, ok = _run_one(m, t, b)
                 all_items.extend(items)
+                if not ok:
+                    failed.append(m)
                 if idx < len(selected_ministries) - 1:
                     next_m = selected_ministries[idx + 1]
                     next_t, _ = ministry_uis[next_m]
@@ -255,16 +313,17 @@ with tab_full:
 
             # 로컬 Excel 저장
             _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-            from scrapers.gov_contracts.utils.excel_writer import save_to_excel
             save_to_excel(new_items or all_items, _OUTPUT_DIR / f"gov_contracts_{TODAY_STR}.xlsx")
 
-            st.session_state.gc_items     = all_items
-            st.session_state.gc_new_items = new_items
-            st.session_state.gc_done      = True
+            st.session_state.gc_items              = all_items
+            st.session_state.gc_new_items          = new_items
+            st.session_state.gc_failed_ministries  = failed
+            st.session_state.gc_done               = True
 
         if st.session_state.gc_done:
-            all_items_res  = st.session_state.gc_items
-            new_items_res  = st.session_state.gc_new_items
+            all_items_res = st.session_state.gc_items
+            new_items_res = st.session_state.gc_new_items
+            failed_res    = st.session_state.gc_failed_ministries
 
             st.divider()
 
@@ -285,9 +344,48 @@ with tab_full:
                 ):
                     cols[idx % len(cols)].metric(ministry, f"{cnt:,}건")
 
-            # ── 신규 항목 ───────────────────────────────────────
+            # ── 신규 항목 다운로드 ──────────────────────────────
             st.divider()
             _show_results(new_items_res, label="신규 항목", file_prefix="gov_contracts_NEW")
+
+            # ── 전체 수집 결과 다운로드 ─────────────────────────
+            if all_items_res:
+                st.download_button(
+                    "⬇️ 전체 수집 결과 엑셀 다운로드",
+                    data=to_bytes(all_items_res),
+                    file_name=f"gov_contracts_ALL_{TODAY_STR}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="dl_full_all",
+                )
+
+            # ── 실패 부처 재수집 ────────────────────────────────
+            if failed_res:
+                st.divider()
+                st.warning(f"⚠️ 수집 실패 부처: **{', '.join(failed_res)}**  \n잠시 후 아래 버튼으로 재수집하세요.")
+                if st.button(
+                    f"🔄 실패 부처 재수집 ({len(failed_res)}개)",
+                    key="btn_retry_full",
+                    use_container_width=True,
+                ):
+                    st.subheader("재수집 진행 현황")
+                    combined, still_failing = _run_retry(
+                        failed_res, all_items_res, "full"
+                    )
+
+                    # 재수집분 new_items에도 반영
+                    existing_urls = {item.file_url for item in all_items_res}
+                    retry_new = [item for item in combined if item.file_url not in existing_urls]
+                    updated_new = new_items_res + retry_new
+
+                    # 로컬 Excel 저장 (병합본)
+                    _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+                    save_to_excel(combined, _OUTPUT_DIR / f"gov_contracts_{TODAY_STR}.xlsx")
+
+                    st.session_state.gc_items              = combined
+                    st.session_state.gc_new_items          = updated_new
+                    st.session_state.gc_failed_ministries  = still_failing
+                    st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -312,9 +410,10 @@ with tab_incr:
         )
 
         if incr_btn:
-            st.session_state.gc_incr_done   = False
-            st.session_state.gc_incr_no_new = False
-            st.session_state.gc_incr_items  = []
+            st.session_state.gc_incr_done                = False
+            st.session_state.gc_incr_no_new              = False
+            st.session_state.gc_incr_items               = []
+            st.session_state.gc_incr_failed_ministries   = []
 
             existing_snap = _load_snap()
 
@@ -330,11 +429,14 @@ with tab_incr:
                 ministry_uis2[m] = (t, b)
 
             all_items2: list[FormItem] = []
+            failed2: list[str] = []
             for idx, m in enumerate(selected_ministries):
                 t, b = ministry_uis2[m]
                 t.markdown("*수집 중...*")
-                items = _run_one(m, t, b)
+                items, ok = _run_one(m, t, b)
                 all_items2.extend(items)
+                if not ok:
+                    failed2.append(m)
                 if idx < len(selected_ministries) - 1:
                     next_m = selected_ministries[idx + 1]
                     next_t, _ = ministry_uis2[next_m]
@@ -342,31 +444,28 @@ with tab_incr:
                     time.sleep(3)
 
             # 신규 항목만 필터
-            known = existing_snap
             incr_items = [
                 item for item in all_items2
-                if _snap_key(item) not in known.get(item.ministry, {})
+                if _snap_key(item) not in existing_snap.get(item.ministry, {})
             ]
 
             if incr_items:
-                # snapshot 업데이트
                 now = _now_str()
                 for item in incr_items:
                     existing_snap.setdefault(item.ministry, {})[_snap_key(item)] = now
                 _save_snap(existing_snap)
 
-                # 로컬 Excel 저장
                 _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-                from scrapers.gov_contracts.utils.excel_writer import save_to_excel
                 save_to_excel(incr_items, _OUTPUT_DIR / f"gov_contracts_INCR_{TODAY_STR}.xlsx")
 
-                st.session_state.gc_incr_items = incr_items
-                st.session_state.gc_incr_done  = True
-            else:
-                st.session_state.gc_incr_no_new = True
-                st.session_state.gc_incr_done   = True
+            st.session_state.gc_incr_items               = incr_items
+            st.session_state.gc_incr_failed_ministries   = failed2
+            st.session_state.gc_incr_no_new              = not incr_items and not failed2
+            st.session_state.gc_incr_done                = True
 
         if st.session_state.gc_incr_done:
+            incr_failed_res = st.session_state.gc_incr_failed_ministries
+
             if st.session_state.gc_incr_no_new:
                 st.divider()
                 st.info("📭 신규 항목이 없습니다. 이미 최신 상태입니다.")
@@ -376,6 +475,29 @@ with tab_incr:
                     label="신규 추가 항목",
                     file_prefix="gov_contracts_INCR",
                 )
+
+            # ── 실패 부처 재수집 ────────────────────────────────
+            if incr_failed_res:
+                st.divider()
+                st.warning(f"⚠️ 수집 실패 부처: **{', '.join(incr_failed_res)}**  \n잠시 후 아래 버튼으로 재수집하세요.")
+                if st.button(
+                    f"🔄 실패 부처 재수집 ({len(incr_failed_res)}개)",
+                    key="btn_retry_incr",
+                    use_container_width=True,
+                ):
+                    st.subheader("재수집 진행 현황")
+                    combined2, still_failing2 = _run_retry(
+                        incr_failed_res, st.session_state.gc_incr_items, "incr"
+                    )
+
+                    # 로컬 Excel 저장 (병합본)
+                    _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+                    save_to_excel(combined2, _OUTPUT_DIR / f"gov_contracts_INCR_{TODAY_STR}.xlsx")
+
+                    st.session_state.gc_incr_items               = combined2
+                    st.session_state.gc_incr_failed_ministries   = still_failing2
+                    st.session_state.gc_incr_no_new              = not combined2
+                    st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -447,7 +569,7 @@ with tab_merge:
                 )
 
                 # 다운로드용 bytes
-                import io, openpyxl as _xl
+                import io
                 buf = io.BytesIO()
                 merged_df.to_excel(buf, index=False)
                 buf.seek(0)
