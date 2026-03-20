@@ -107,3 +107,25 @@ def save_to_excel(items: list[FormItem], output_path: str | Path) -> None:
 
     _autofit_columns(ws)
     wb.save(output_path)
+
+
+def to_bytes(items: list[FormItem]) -> bytes:
+    """items를 Excel 파일 바이트로 반환 (다운로드용)"""
+    import io
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "gov_contracts"
+
+    for col_idx, col_name in enumerate(COLUMNS, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=col_name)
+        cell.fill = _HEADER_FILL
+        cell.font = _HEADER_FONT
+        cell.alignment = _HEADER_ALIGN
+
+    for seq, item in enumerate(items, start=1):
+        ws.append(_item_to_row(seq, item))
+
+    _autofit_columns(ws)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
