@@ -1,14 +1,20 @@
 """
-문화체육관광부 표준계약서 스크래퍼 (Playwright)
+문화체육관광부 표준계약서 스크래퍼 (curl_cffi — chrome TLS 흉내)
 
-목록 URL: https://www.mcst.go.kr/site/s_data/generalData/dataList.jsp?pMenuCD=0405050000
-- 목록 페이지에서 pSeq 수집 → 상세 페이지 방문 → 첨부파일 URL 조립
-- 페이지네이션: movePage(N, form) onclick 클릭
+목록: GET/POST https://www.mcst.go.kr/site/s_data/generalData/dataList.jsp
+  - GET  pMenuCD=0405050000          (1페이지)
+  - POST pMenuCD=0405050000, pCurrentPage=N  (N≥2)
+  - 결과: tbody tr → href dataView.jsp?pMenuCD=...&pSeq=N
+  - 전체 페이지 수: onclick 내 movePage(N, ...) 최대값
 
-다운로드 URL 패턴 (onclick 파싱):
-  file_download('인코딩된원본명', '저장된실제명', 'menuCD')
-  → /servlets/eduport/front/upload/UplDownloadFile
-    ?pFileName={인코딩된원본명}&pRealName={저장된실제명}&pPath={menuCD}&pFlag=
+상세: GET dataView.jsp?pMenuCD=0405050000&pSeq=N
+  - onclick: file_download('URL인코딩원본명', '저장명', 'menuCD')
+  - 다운로드: /site/common/file/fileDownload.jsp
+      form POST  pFileNm, pSaveNm, pPath, pFlag
+
+※ requests/curl_cffi 로 동작 (Playwright 불필요)
+  mcst.go.kr 서버가 Playwright 헤드리스 크롬을 TLS 수준에서 차단하므로
+  curl_cffi chrome 지문으로 우회합니다.
 """
 from __future__ import annotations
 
@@ -17,20 +23,24 @@ import time
 import urllib.parse
 
 from bs4 import BeautifulSoup
-from playwright.sync_api import Page
+from curl_cffi import requests as cffi_requests
 
-from ..base_playwright_scraper import BasePlaywrightScraper
-from ..base_scraper import FormItem
+from ..base_scraper import BaseGovScraper, FormItem
+from ..utils.file_filter import CONTRACT_KEYWORDS
 
 MINISTRY_NAME = "문화체육관광부"
 BASE_URL = "https://www.mcst.go.kr"
-MENU_CD = "0405050000"
-LIST_URL = f"{BASE_URL}/site/s_data/generalData/dataList.jsp?pMenuCD={MENU_CD}"
+LIST_URL = f"{BASE_URL}/site/s_data/generalData/dataList.jsp"
 VIEW_URL = f"{BASE_URL}/site/s_data/generalData/dataView.jsp"
-DOWNLOAD_URL = f"{BASE_URL}/servlets/eduport/front/upload/UplDownloadFile"
+MENU_CD = "0405050000"
+
+_FILE_DL_RE = re.compile(
+    r"file_download\('([^']+)',\s*'([^']+)',\s*'([^']+)'\)"
+)
+_MOVE_PAGE_RE = re.compile(r"movePage\((\d+)")
 
 
-class McstScraper(BasePlaywrightScraper):
+class McstScraper(BaseGovScraper):
     MINISTRY_NAME = MINISTRY_NAME
     ministry_name = MINISTRY_NAME
     request_delay = 1.5
@@ -38,140 +48,159 @@ class McstScraper(BasePlaywrightScraper):
     def __init__(self, download_dir: str = "downloads/gov_contracts/문화체육관광부"):
         super().__init__()
         self.download_dir = download_dir
+        # curl_cffi 세션으로 교체 (chrome TLS 지문)
+        self.session = cffi_requests.Session(impersonate="chrome")
 
-    def _scrape_page(self, page: Page) -> list[FormItem]:
+    # ── 목록 페이지 ────────────────────────────────────────────────
+
+    def _get_list_page(self, page_num: int) -> BeautifulSoup:
+        time.sleep(self.request_delay)
+        try:
+            if page_num == 1:
+                resp = self.session.get(
+                    LIST_URL, params={"pMenuCD": MENU_CD}, timeout=30
+                )
+            else:
+                resp = self.session.post(
+                    LIST_URL,
+                    data={
+                        "pMenuCD": MENU_CD,
+                        "pCurrentPage": str(page_num),
+                        "pSeq": "",
+                        "pSearchType": "",
+                        "pSearchWord": "",
+                    },
+                    timeout=30,
+                )
+            resp.raise_for_status()
+        except Exception as e:
+            print(f"[MCST] 목록 페이지 {page_num} 실패: {e}")
+            return BeautifulSoup("", "html.parser")
+        return BeautifulSoup(resp.content, "html.parser")
+
+    def _get_total_pages(self, soup: BeautifulSoup) -> int:
+        pages = [
+            int(m)
+            for a in soup.find_all("a", onclick=True)
+            for m in _MOVE_PAGE_RE.findall(a.get("onclick", ""))
+        ]
+        return max(pages) if pages else 1
+
+    # ── 상세 페이지 ────────────────────────────────────────────────
+
+    def _get_detail_page(self, p_seq: str) -> BeautifulSoup:
+        time.sleep(self.request_delay)
+        try:
+            resp = self.session.get(
+                VIEW_URL,
+                params={"pMenuCD": MENU_CD, "pSeq": p_seq},
+                timeout=30,
+            )
+            resp.raise_for_status()
+        except Exception as e:
+            print(f"[MCST] 상세 페이지 pSeq={p_seq} 실패: {e}")
+            return BeautifulSoup("", "html.parser")
+        return BeautifulSoup(resp.content, "html.parser")
+
+    # ── 수집 진입점 ───────────────────────────────────────────────
+
+    def fetch_items(self) -> list[FormItem]:
         all_items: list[FormItem] = []
         seen: set[str] = set()
 
-        # ── 1단계: 목록 페이지에서 전체 pSeq 수집 ──────────────────────
-        page.goto(LIST_URL, wait_until="networkidle", timeout=30000)
-        time.sleep(1)
+        # 1단계: 전체 목록에서 pSeq 수집
+        first_soup = self._get_list_page(1)
+        total_pages = self._get_total_pages(first_soup)
+        print(f"[MCST] 전체 {total_pages}페이지")
 
         row_data: list[tuple[str, str, str, str]] = []  # (pSeq, title, date, dept)
+        for soup in [first_soup] + [self._get_list_page(p) for p in range(2, total_pages + 1)]:
+            self._parse_list_rows(soup, row_data)
 
-        while True:
-            soup = BeautifulSoup(page.content(), "html.parser")
-            tbody = soup.find("tbody")
-            if tbody:
-                for tr in tbody.find_all("tr"):
-                    a_tag = tr.find("a", href=lambda h: h and "dataView.jsp" in (h or ""))
-                    if not a_tag:
-                        # onclick fnView 방식 fallback
-                        a_tag = tr.find("a", onclick=lambda o: o and "fnView" in (o or ""))
-                    if not a_tag:
-                        continue
+        print(f"[MCST] 목록 {len(row_data)}건 수집")
 
-                    # pSeq 추출
-                    p_seq = ""
-                    href = a_tag.get("href", "")
-                    m = re.search(r"pSeq=(\d+)", href)
-                    if m:
-                        p_seq = m.group(1)
-                    else:
-                        onclick = a_tag.get("onclick", "")
-                        m = re.search(r"fnView\(['\"][\w]+['\"],\s*['\"](\d+)['\"]", onclick)
-                        if m:
-                            p_seq = m.group(1)
-                    if not p_seq:
-                        continue
-
-                    # 제목
-                    title_p = a_tag.find("p", class_="tit")
-                    title = title_p.get_text(strip=True) if title_p else a_tag.get_text(strip=True)
-
-                    # td 위치 기반: [0]번호 [1]제목 [2]담당부서 [3]등재일 [4]조회
-                    tds = tr.find_all("td")
-                    registered_date = tds[3].get_text(strip=True).rstrip(".") if len(tds) > 3 else ""
-                    department = tds[2].get_text(strip=True) if len(tds) > 2 else ""
-
-                    row_data.append((p_seq, title, registered_date, department))
-
-            # 다음 페이지 클릭 (movePage(N, form) 방식)
-            next_btn = page.query_selector("a[onclick*='movePage']:last-of-type")
-            # "다음" 텍스트 버튼 탐색
-            next_btn = None
-            for a in soup.find_all("a", onclick=lambda o: o and "movePage" in (o or "")):
-                txt = a.get_text(strip=True)
-                if txt in ("다음", "next", ">", "▶"):
-                    next_btn_sel = a.get("onclick", "")
-                    m_next = re.search(r"movePage\((\d+)", next_btn_sel)
-                    if m_next:
-                        next_page_num = m_next.group(1)
-                        next_btn = page.query_selector(
-                            f"a[onclick*='movePage({next_page_num},'],"
-                            f"a[onclick*=\"movePage({next_page_num},\"],"
-                            f"a[onclick*=\"movePage('{next_page_num}'\"]"
-                        )
-                    break
-
-            if not next_btn:
-                break
-
-            try:
-                next_btn.click()
-                page.wait_for_load_state("networkidle")
-                time.sleep(1)
-            except Exception:
-                break
-
-        # ── 2단계: 각 pSeq 상세 페이지 방문 → 파일 URL 수집 ────────────
+        # 2단계: 상세 페이지에서 파일 수집
         for p_seq, title, registered_date, department in row_data:
             detail_url = f"{VIEW_URL}?pMenuCD={MENU_CD}&pSeq={p_seq}"
+            detail_soup = self._get_detail_page(p_seq)
+            self._parse_detail_files(
+                detail_soup, title, registered_date, department,
+                detail_url, seen, all_items,
+            )
 
-            try:
-                page.goto(detail_url, wait_until="networkidle", timeout=30000)
-                time.sleep(1)
-            except Exception as e:
-                print(f"[MCST] 상세 페이지 로드 실패 pSeq={p_seq}: {e}")
-                continue
-
-            detail_soup = BeautifulSoup(page.content(), "html.parser")
-
-            # file_download('인코딩명', '저장명', 'menuCD') 패턴
-            found_file = False
-            for fa in detail_soup.find_all("a", onclick=lambda o: o and "file_download" in (o or "")):
-                onclick = fa.get("onclick", "")
-                m = re.search(
-                    r"file_download\('([^']+)',\s*'([^']+)',\s*'([^']+)'\)",
-                    onclick,
-                )
-                if not m:
-                    continue
-
-                p_file_name = m.group(1)   # URL 인코딩된 원본 파일명
-                p_real_name = m.group(2)   # 서버 저장 파일명
-                p_path = m.group(3)        # menuCD
-
-                file_url = (
-                    f"{DOWNLOAD_URL}"
-                    f"?pFileName={p_file_name}"
-                    f"&pRealName={p_real_name}"
-                    f"&pPath={p_path}"
-                    f"&pFlag="
-                )
-
-                # 파일명 디코딩
-                file_name = urllib.parse.unquote_plus(p_file_name)
-                file_ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
-
-                dedup_key = file_url
-                if dedup_key in seen:
-                    continue
-                seen.add(dedup_key)
-                found_file = True
-
-                all_items.append(FormItem(
-                    ministry=MINISTRY_NAME,
-                    title=title,
-                    file_name=file_name,
-                    file_url=file_url,
-                    source_url=detail_url,
-                    registered_date=registered_date,
-                    department=department,
-                    file_ext=file_ext,
-                ))
-
-            if not found_file:
-                print(f"[MCST] 첨부파일 없음: pSeq={p_seq}, title={title[:30]}")
+            if self.on_progress:
+                self.on_progress(len(all_items), f"{len(all_items)}건 수집 중...")
 
         return all_items
+
+    def _parse_list_rows(
+        self,
+        soup: BeautifulSoup,
+        row_data: list[tuple[str, str, str, str]],
+    ) -> None:
+        tbody = soup.find("tbody")
+        if not tbody:
+            return
+        for tr in tbody.find_all("tr"):
+            a_tag = tr.find("a", href=lambda h: h and "dataView.jsp" in (h or ""))
+            if not a_tag:
+                continue
+
+            href = a_tag.get("href", "")
+            m = re.search(r"pSeq=(\d+)", href)
+            if not m:
+                continue
+            p_seq = m.group(1)
+
+            title_p = a_tag.find("p", class_="tit")
+            title = title_p.get_text(strip=True) if title_p else a_tag.get_text(strip=True)
+
+            tds = tr.find_all("td")
+            registered_date = tds[3].get_text(strip=True).rstrip(".") if len(tds) > 3 else ""
+            department = tds[2].get_text(strip=True) if len(tds) > 2 else ""
+
+            row_data.append((p_seq, title, registered_date, department))
+
+    def _parse_detail_files(
+        self,
+        soup: BeautifulSoup,
+        title: str,
+        registered_date: str,
+        department: str,
+        detail_url: str,
+        seen: set[str],
+        items: list[FormItem],
+    ) -> None:
+        for fa in soup.find_all("a", onclick=_FILE_DL_RE.pattern if False else True):
+            onclick = fa.get("onclick", "")
+            m = _FILE_DL_RE.search(onclick)
+            if not m:
+                continue
+
+            p_file_nm = m.group(1)   # URL 인코딩된 원본 파일명
+            p_save_nm = m.group(2)   # 서버 저장 파일명
+            p_path = m.group(3)      # menuCD
+
+            file_url = (
+                f"{BASE_URL}/site/common/file/fileDownload.jsp"
+                f"?pFileNm={p_file_nm}&pSaveNm={p_save_nm}"
+                f"&pPath={p_path}&pFlag="
+            )
+
+            file_name = urllib.parse.unquote_plus(p_file_nm)
+            file_ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+
+            if file_url in seen:
+                continue
+            seen.add(file_url)
+
+            items.append(FormItem(
+                ministry=MINISTRY_NAME,
+                title=title,
+                file_name=file_name,
+                file_url=file_url,
+                source_url=detail_url,
+                registered_date=registered_date,
+                department=department,
+                file_ext=file_ext,
+            ))
