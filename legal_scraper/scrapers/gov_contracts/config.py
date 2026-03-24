@@ -103,7 +103,7 @@ MINISTRIES: list[MinistryConfig] = [
         notes="JS 렌더링",
     ),
     MinistryConfig(
-        name="산업통상부",
+        name="산업통상자원부",
         scrape_type="playwright",
         base_url="https://www.motie.go.kr/kor/search",
         notes="JS 렌더링",
