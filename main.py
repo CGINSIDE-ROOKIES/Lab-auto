@@ -15,9 +15,9 @@ from pathlib import Path
 
 # Windows cp949 콘솔에서 한글/특수문자 인코딩 오류 방지
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
 # legal_scraper 디렉터리를 sys.path에 추가
 # (scrapers/klac_scraper.py 등이 'from config import ...' 형태로 임포트)
