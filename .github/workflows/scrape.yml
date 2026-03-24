@@ -32,6 +32,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           PYTHONUTF8: "1"
+          PYTHONUNBUFFERED: "1"
 
       # 수집 실패 시에도 Supabase에서 결과 확인 가능하도록 로그 URL 출력
       - name: 결과 요약 출력
