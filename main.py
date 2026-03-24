@@ -59,13 +59,13 @@ def _run_legal() -> None:
 
     total = 0
     for source_key, scrape_fn in sources:
-        print(f"[START] {source_key} 수집 중...")
+        print(f"[START] {source_key} 수집 중...", flush=True)
         try:
             rows = scrape_fn()
-            print(f"[DONE]  {source_key} — {len(rows)}건 수집")
+            print(f"[DONE]  {source_key} — {len(rows)}건 수집", flush=True)
             sb_rows = _to_supabase_rows(rows, source_key)
             inserted = upsert_legal_forms(sb_rows)
-            print(f"        Supabase 저장 ({inserted}건 처리)")
+            print(f"        Supabase 저장 ({inserted}건 처리)", flush=True)
             total += inserted
             try:
                 log_scrape_entry({"run_id": run_id, "ministry": source_key,
@@ -123,12 +123,16 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    print("=== 수집 시작 ===", flush=True)
     args = parse_args()
+    print(f"[CONFIG] target={args.target}", flush=True)
 
     if args.target in ("legal", "all"):
+        print("[PHASE] 법률서식 수집 시작 (KLAC·ECFS·EKT)", flush=True)
         _run_legal()
 
     if args.target in ("gov", "all"):
+        print("[PHASE] 정부부처 계약서 수집 시작", flush=True)
         _run_gov(ministry=args.ministry)
 
 
