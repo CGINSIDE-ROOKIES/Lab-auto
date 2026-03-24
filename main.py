@@ -123,6 +123,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(name)s] %(message)s",
+        datefmt="%H:%M:%S",
+    )
     print("=== 수집 시작 ===", flush=True)
     args = parse_args()
     print(f"[CONFIG] target={args.target}", flush=True)
