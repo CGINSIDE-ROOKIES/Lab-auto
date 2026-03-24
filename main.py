@@ -28,11 +28,14 @@ if str(_LS_DIR) not in sys.path:
 
 def _run_legal() -> None:
     """법률서식 3곳(KLAC·ECFS·EKT) 수집 → Supabase 저장"""
+    import datetime
     from scrapers import klac_scraper, ecfs_scraper, ekt_scraper
     from utils.ekt_proxy import start as _start_ekt_proxy
-    from legal_scraper.utils.supabase_client import upsert_legal_forms
+    from legal_scraper.utils.supabase_client import upsert_legal_forms, log_scrape_entry
 
     _start_ekt_proxy()
+
+    run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + "_legal"
 
     def _to_supabase_rows(rows: list[dict], source_key: str) -> list[dict]:
         return [
@@ -64,10 +67,22 @@ def _run_legal() -> None:
             inserted = upsert_legal_forms(sb_rows)
             print(f"        Supabase 저장 ({inserted}건 처리)")
             total += inserted
+            try:
+                log_scrape_entry({"run_id": run_id, "ministry": source_key,
+                    "status": "success", "round_num": 1,
+                    "collected": len(rows), "inserted": inserted, "error_msg": None})
+            except Exception:
+                pass
         except EnvironmentError as e:
             print(f"[WARN] Supabase 저장 건너뜀: {e}")
         except Exception as e:
             print(f"[ERROR] {source_key}: {e}")
+            try:
+                log_scrape_entry({"run_id": run_id, "ministry": source_key,
+                    "status": "failed", "round_num": 1,
+                    "collected": 0, "inserted": 0, "error_msg": str(e)[:500]})
+            except Exception:
+                pass
 
     print(f"\n법률서식 완료 — 총 {total}건 처리")
 
