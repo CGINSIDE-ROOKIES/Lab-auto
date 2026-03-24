@@ -1,21 +1,63 @@
 import { createClient } from "@/lib/supabase/server";
 import { ContractsClient } from "./ContractsClient";
 
-export default async function ContractsPage() {
+const PAGE_SIZE = 100;
+
+type SearchParams = {
+  page?: string;
+  keyword?: string;
+  sources?: string;
+  format?: string;
+};
+
+export default async function ContractsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const params = await searchParams;
+  const page = Math.max(1, parseInt(params.page ?? "1"));
+  const keyword = params.keyword ?? "";
+  const sourceList = params.sources ? params.sources.split(",").filter(Boolean) : [];
+  const format = params.format ?? "";
+
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("gov_contracts")
-    .select("*")
-    .order("collected_at", { ascending: false })
-    .limit(500);
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  let query = supabase
+    .from("unified_forms")
+    .select("uid, source_name, form_title, doc_format, download_url, collected_at", { count: "exact" });
+
+  if (keyword) query = query.ilike("form_title", `%${keyword}%`);
+  if (sourceList.length > 0) query = query.in("source_name", sourceList);
+  if (format) query = query.eq("doc_format", format);
+
+  // 출처·형식은 별도 쿼리로 전체 distinct 값 수집
+  const [{ data, count }, { data: sourcesRaw }, { data: formatsRaw }] = await Promise.all([
+    query.order("collected_at", { ascending: false }).range(from, to),
+    supabase.from("unified_forms").select("source_name").order("source_name").limit(50000),
+    supabase.from("unified_forms").select("doc_format").limit(50000),
+  ]);
+
+  const sources = [...new Set(sourcesRaw?.map((d) => d.source_name).filter(Boolean) ?? [])].sort() as string[];
+  const formats = [...new Set(formatsRaw?.map((d) => d.doc_format).filter(Boolean) ?? [])].sort() as string[];
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-bold">정부부처 계약서</h1>
-        <p className="text-sm text-gray-500">19개 정부부처 표준계약서·약정서 수집 데이터</p>
+        <h1 className="text-xl font-bold">서식 목록</h1>
+        <p className="text-sm text-gray-500">법률서식 및 정부부처 표준계약서 통합 데이터</p>
       </div>
-      <ContractsClient initialData={data ?? []} />
+      <ContractsClient
+        initialData={data ?? []}
+        totalCount={count ?? 0}
+        page={page}
+        pageSize={PAGE_SIZE}
+        sources={sources}
+        formats={formats}
+        filters={{ keyword, sources: sourceList, format }}
+      />
     </div>
   );
 }
