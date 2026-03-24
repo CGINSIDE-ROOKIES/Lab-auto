@@ -27,7 +27,7 @@ jobs:
         run: uv run playwright install chromium --with-deps
 
       - name: 전체 수집 실행
-        run: uv run python -X utf8 main.py --target all
+        run: uv run python -u -X utf8 main.py --target all
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
