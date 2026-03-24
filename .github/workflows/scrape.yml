@@ -2,8 +2,8 @@ name: 법률서식 자동 수집
 
 on:
   schedule:
-    # 매일 오전 8시 KST (UTC+9 → UTC 23:00 전날)
-    - cron: '0 23 * * *'
+    # 매월 1일 오전 8시 KST (UTC+9 → UTC 23:00 전날)
+    - cron: '0 23 1 * *'
   workflow_dispatch:  # 수동 트리거
 
 jobs:
