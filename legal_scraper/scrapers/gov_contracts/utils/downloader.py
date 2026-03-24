@@ -27,11 +27,17 @@ def _extract_filename_from_cd(content_disposition: str) -> str:
     match = re.search(r'filename=["\']?([^"\';\r\n]+)["\']?', content_disposition)
     if match:
         raw = match.group(1).strip().strip('"\'')
-        # EUC-KR로 인코딩된 경우 복원 시도
+        # 비ASCII 바이트가 있으면 EUC-KR 직접 인코딩 가능성 (오래된 서버)
         try:
-            return raw.encode("latin-1").decode("euc-kr")
-        except (UnicodeDecodeError, UnicodeEncodeError):
+            raw_bytes = raw.encode("latin-1")
+            if any(b > 0x7F for b in raw_bytes):
+                try:
+                    return raw_bytes.decode("euc-kr")
+                except UnicodeDecodeError:
+                    pass
+        except UnicodeEncodeError:
             pass
+        # ASCII percent-encoding 처리 (현대적 서버)
         try:
             return urllib.parse.unquote(raw, encoding="utf-8")
         except Exception:
@@ -83,6 +89,13 @@ def download_file(
 
     # 파일명에 사용 불가 문자 제거 (Windows 호환)
     filename = re.sub(r'[\\/:*?"<>|]', "_", filename)
+    # 파일명 길이 제한 (Windows MAX_PATH 고려, 확장자 보존)
+    if len(filename) > 200:
+        if "." in filename:
+            stem, ext = filename.rsplit(".", 1)
+            filename = stem[: 195 - len(ext)] + "." + ext
+        else:
+            filename = filename[:200]
 
     save_path = save_dir / filename
 

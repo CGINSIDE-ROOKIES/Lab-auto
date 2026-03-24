@@ -1,0 +1,42 @@
+name: 법률서식 자동 수집
+
+on:
+  schedule:
+    # 매일 오전 8시 KST (UTC+9 → UTC 23:00 전날)
+    - cron: '0 23 * * *'
+  workflow_dispatch:  # 수동 트리거
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90  # 재시도 대기 시간 포함 (3분 + 5분 + 수집 시간)
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+
+      - name: Python 의존성 설치
+        run: uv sync
+
+      - name: Playwright 브라우저 설치
+        run: uv run playwright install chromium --with-deps
+
+      - name: 전체 수집 실행
+        run: uv run python -X utf8 main.py --target all
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          PYTHONUTF8: "1"
+
+      # 수집 실패 시에도 Supabase에서 결과 확인 가능하도록 로그 URL 출력
+      - name: 결과 요약 출력
+        if: always()
+        run: |
+          echo "## 수집 결과" >> $GITHUB_STEP_SUMMARY
+          echo "Supabase scrape_logs 테이블에서 run_id로 상세 확인 가능" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: ${{ secrets.SUPABASE_URL }}" >> $GITHUB_STEP_SUMMARY

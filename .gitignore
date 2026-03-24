@@ -1,3 +1,7 @@
+# 환경변수 (절대 커밋 금지)
+.env
+.env.local
+
 # Python-generated files
 __pycache__/
 *.py[oc]
@@ -8,6 +12,19 @@ wheels/
 
 # Virtual environments
 .venv
+
+# 수집 다운로드 파일
+downloads/
+
+# 출력 파일
+output/
+outputs/
+legal_scraper/logs/
+
+# Next.js
+web/.next/
+web/node_modules/
+web/.env.local
 
 # Excel files (output/logs 제외, 분류체계 원본은 포함)
 *.xlsx
