@@ -57,6 +57,8 @@ class BaseGovScraper(ABC):
         self._init_session()
         # 실시간 진행도 콜백: on_progress(수집건수, 메시지)
         self.on_progress: Callable[[int, str], None] | None = None
+        # 연결 오류 발생 여부 (run_all.py retry 판단용)
+        self.had_connection_error: bool = False
 
     def _init_session(self) -> None:
         """세션 재초기화. 서브클래스에서 오버라이드 가능."""
@@ -80,6 +82,7 @@ class BaseGovScraper(ABC):
                 if attempt < max_retries - 1:
                     print(f"[{self.ministry_name}] 요청 실패 (시도={attempt + 1}): {e}")
                     continue
+                self.had_connection_error = True
                 raise
 
     # ── 추상 메서드 ────────────────────────────────────────────────

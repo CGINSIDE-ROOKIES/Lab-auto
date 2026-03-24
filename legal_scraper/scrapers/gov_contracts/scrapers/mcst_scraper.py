@@ -75,6 +75,7 @@ class McstScraper(BaseGovScraper):
             resp.raise_for_status()
         except Exception as e:
             print(f"[MCST] 목록 페이지 {page_num} 실패: {e}")
+            self.had_connection_error = True
             return BeautifulSoup("", "html.parser")
         return BeautifulSoup(resp.content, "html.parser")
 

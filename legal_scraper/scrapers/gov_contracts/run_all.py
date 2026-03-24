@@ -27,7 +27,7 @@ if str(_ROOT) not in sys.path:
 
 from legal_scraper.scrapers.gov_contracts.config import MINISTRIES, MinistryConfig
 from legal_scraper.scrapers.gov_contracts.utils.excel_writer import save_to_excel
-from legal_scraper.utils.supabase_client import upsert_gov_contracts, log_scrape_run
+from legal_scraper.utils.supabase_client import upsert_gov_contracts, log_scrape_entry
 
 DOWNLOAD_BASE = "downloads/gov_contracts"
 OUTPUT_EXCEL = "outputs/gov_contracts_metadata.xlsx"
@@ -124,6 +124,10 @@ def _run_one(name: str, args: argparse.Namespace) -> tuple[list, str | None]:
                 except Exception as e:
                     print(f"  [WARN] 다운로드 실패 {item.file_url}: {e}")
 
+    # 0건 수집 + 연결 오류 발생 → 상위로 예외를 던져 retry 대상에 포함
+    if len(items) == 0 and getattr(scraper, 'had_connection_error', False):
+        raise ConnectionError(f"{name}: 연결 오류로 0건 수집, 재시도 필요")
+
     return items, None
 
 
@@ -137,7 +141,6 @@ def main() -> None:
 
     run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     all_items: list = []
-    log_entries: list[dict] = []
     pending = list(targets)
 
     for round_num in range(1, MAX_ROUNDS + 1):
@@ -153,11 +156,12 @@ def main() -> None:
 
             if scraper_map.get(name) is None:
                 print(f"[SKIP] {name} — 스크래퍼 미구현")
-                log_entries.append({
-                    "run_id": run_id, "ministry": name,
-                    "status": "skipped", "round_num": round_num,
-                    "collected": 0, "inserted": 0, "error_msg": None,
-                })
+                try:
+                    log_scrape_entry({"run_id": run_id, "ministry": name,
+                        "status": "skipped", "round_num": round_num,
+                        "collected": 0, "inserted": 0, "error_msg": None})
+                except Exception:
+                    pass
                 continue
 
             label = f"(Round {round_num})" if round_num > 1 else ""
@@ -176,21 +180,23 @@ def main() -> None:
                     print(f"  [WARN] Supabase 저장 실패: {e}")
 
                 all_items.extend(items)
-                log_entries.append({
-                    "run_id": run_id, "ministry": name,
-                    "status": "success", "round_num": round_num,
-                    "collected": len(items), "inserted": inserted, "error_msg": None,
-                })
+                try:
+                    log_scrape_entry({"run_id": run_id, "ministry": name,
+                        "status": "success", "round_num": round_num,
+                        "collected": len(items), "inserted": inserted, "error_msg": None})
+                except Exception:
+                    pass
 
             except Exception as e:
                 err = str(e)[:500]  # 너무 긴 에러 메시지 자르기
                 print(f"[ERROR] {name}: {err}")
                 still_failed.append(ministry_cfg)
-                log_entries.append({
-                    "run_id": run_id, "ministry": name,
-                    "status": "failed", "round_num": round_num,
-                    "collected": 0, "inserted": 0, "error_msg": err,
-                })
+                try:
+                    log_scrape_entry({"run_id": run_id, "ministry": name,
+                        "status": "failed", "round_num": round_num,
+                        "collected": 0, "inserted": 0, "error_msg": err})
+                except Exception:
+                    pass
 
         pending = still_failed
         if not pending:
@@ -201,12 +207,6 @@ def main() -> None:
         save_to_excel(all_items, OUTPUT_EXCEL)
         print(f"\n총 {len(all_items)}건 수집 -> {OUTPUT_EXCEL}")
 
-    # Supabase 실행 로그 저장
-    try:
-        log_scrape_run(run_id, log_entries)
-        print(f"실행 로그 저장 완료 (run_id: {run_id})")
-    except Exception as e:
-        print(f"[WARN] 로그 저장 실패: {e}")
 
     # 최종 실패 보고
     if pending:
