@@ -80,7 +80,7 @@ def _run_gov(ministry: str | None = None) -> None:
 
     # run_all.parse_args()가 sys.argv를 직접 읽으므로 잠시 교체
     orig_argv = _sys.argv[:]
-    _sys.argv = [orig_argv[0]]
+    _sys.argv = [orig_argv[0], "--no-download"]
     if ministry:
         _sys.argv += ["--ministry", ministry]
 
