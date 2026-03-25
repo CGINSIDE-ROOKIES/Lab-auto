@@ -23,6 +23,7 @@ class FormItem:
     department: str = ""
     file_ext: str = ""
     local_path: str = ""
+    download_post_data: dict | None = None
 
     def __post_init__(self):
         if not self.file_ext and self.file_name:
@@ -69,6 +70,9 @@ class BaseGovScraper(ABC):
         """
         fn()을 호출하고 실패 시 세션 재초기화 후 재시도.
         모든 scrapers의 requests 호출에 공통 적용되는 재시도 래퍼.
+
+        재시도가 한 번이라도 발생한 경우 had_connection_error = True 설정.
+        세션 리셋 후 서버가 빈 200 응답을 반환하는 경우에도 retry 대상 포함되도록.
         """
         for attempt in range(max_retries):
             if attempt > 0:
@@ -77,7 +81,11 @@ class BaseGovScraper(ABC):
                 time.sleep(wait)
                 self._init_session()
             try:
-                return fn()
+                resp = fn()
+                if attempt > 0:
+                    # 이전에 연결 오류 발생 후 세션 리셋으로 성공 — 빈 응답일 수 있으므로 플래그 설정
+                    self.had_connection_error = True
+                return resp
             except Exception as e:
                 if attempt < max_retries - 1:
                     print(f"[{self.ministry_name}] 요청 실패 (시도={attempt + 1}): {e}")

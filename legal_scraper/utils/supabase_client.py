@@ -113,33 +113,25 @@ def upsert_legal_forms(items: list[dict]) -> int:
     return len(rows)
 
 
-def log_scrape_run(run_id: str, entries: list[dict]) -> None:
+def log_scrape_entry(entry: dict) -> None:
     """
-    scrape_logs 테이블에 수집 실행 결과를 기록합니다.
+    scrape_logs 테이블에 수집 결과 1건을 즉시 기록합니다.
 
-    entries 딕셔너리 키:
+    entry 딕셔너리 키:
       run_id, ministry, status ('success'|'failed'|'skipped'),
       round_num, collected, inserted, error_msg
     """
     _check_config()
-    if not entries:
-        return
-
-    scraped_at = datetime.now(_KST).isoformat()
-    rows = [
-        {
-            "run_id": e["run_id"],
-            "ministry": e["ministry"],
-            "status": e["status"],
-            "round_num": e["round_num"],
-            "collected": e["collected"],
-            "inserted": e["inserted"],
-            "error_msg": e.get("error_msg"),
-            "scraped_at": scraped_at,
-        }
-        for e in entries
-    ]
-
+    row = {
+        "run_id": entry["run_id"],
+        "ministry": entry["ministry"],
+        "status": entry["status"],
+        "round_num": entry["round_num"],
+        "collected": entry["collected"],
+        "inserted": entry["inserted"],
+        "error_msg": entry.get("error_msg"),
+        "scraped_at": datetime.now(_KST).strftime("%Y-%m-%dT%H:%M:%S"),
+    }
     url = f"{_SUPABASE_URL}/rest/v1/scrape_logs"
-    resp = requests.post(url, headers=_headers(conflict_ignore=False), json=rows, timeout=30)
+    resp = requests.post(url, headers=_headers(conflict_ignore=False), json=[row], timeout=30)
     resp.raise_for_status()

@@ -48,8 +48,8 @@ class McstScraper(BaseGovScraper):
     def __init__(self, download_dir: str = "downloads/gov_contracts/문화체육관광부"):
         super().__init__()
         self.download_dir = download_dir
-        # curl_cffi 세션으로 교체 (chrome TLS 지문)
-        self.session = cffi_requests.Session(impersonate="chrome")
+        # curl_cffi 세션으로 교체 (safari TLS 지문 — chrome은 mcst.go.kr WAF에 차단됨)
+        self.session = cffi_requests.Session(impersonate="safari")
 
     # ── 목록 페이지 ────────────────────────────────────────────────
 

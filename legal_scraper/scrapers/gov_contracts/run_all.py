@@ -8,8 +8,8 @@
 
 재시도 전략:
     Round 1: 전체 실행
-    Round 2: 실패분 3분 대기 후 재시도
-    Round 3: 잔여 실패분 5분 대기 후 재시도
+    Round 2: 실패분 재시도 - 라운드 내 마지막 실패로부터 3분 미만 경과 시 나머지만 대기
+    Round 3: 잔여 실패분 재시도 - 동일하게 5분 기준 적용
     이후에도 실패 시 exit code 1 (GitHub Actions 이메일 트리거)
 """
 from __future__ import annotations
@@ -56,6 +56,11 @@ from legal_scraper.scrapers.gov_contracts.scrapers.mfds_scraper import MfdsScrap
 from legal_scraper.scrapers.gov_contracts.scrapers.mois_scraper import MoisScraper
 from legal_scraper.scrapers.gov_contracts.scrapers.bai_scraper import BaiScraper
 from legal_scraper.scrapers.gov_contracts.scrapers.moel_scraper import MoelScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.customs_scraper import CustomsScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.naacc_scraper import NaaccScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.forest_scraper import ForestScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.mofa_scraper import MofaScraper
+from legal_scraper.scrapers.gov_contracts.scrapers.mpva_scraper import MpvaScraper
 
 scraper_map: dict[str, type] = {
     "공정거래위원회": FtcScraper,
@@ -77,6 +82,11 @@ scraper_map: dict[str, type] = {
     "행정안전부": MoisScraper,
     "감사원": BaiScraper,
     "고용노동부": MoelScraper,
+    "관세청": CustomsScraper,
+    "행정중심복합도시건설청": NaaccScraper,
+    "산림청": ForestScraper,
+    "외교부": MofaScraper,
+    "국가보훈부": MpvaScraper,
 }
 
 
@@ -119,7 +129,8 @@ def _run_one(name: str, args: argparse.Namespace) -> tuple[list, str | None]:
             if item.file_url:
                 try:
                     item.local_path = download_file(
-                        item.file_url, dl_dir, session=scraper.session
+                        item.file_url, dl_dir, session=scraper.session,
+                        post_data=item.download_post_data,
                     )
                 except Exception as e:
                     print(f"  [WARN] 다운로드 실패 {item.file_url}: {e}")
@@ -143,19 +154,28 @@ def main() -> None:
     all_items: list = []
     pending = list(targets)
 
+    last_failure_time: float | None = None
+
     for round_num in range(1, MAX_ROUNDS + 1):
         if round_num > 1:
             wait_sec = RETRY_WAITS[round_num - 2]
-            print(f"\n[RETRY] 실패 {len(pending)}건 — {wait_sec // 60}분 대기 후 Round {round_num} 시작")
-            time.sleep(wait_sec)
+            elapsed = time.time() - (last_failure_time or time.time())
+            remaining = max(0.0, wait_sec - elapsed)
+            if remaining > 0:
+                print(f"\n[RETRY] 실패 {len(pending)}건 - {remaining:.0f}초 추가 대기 후 Round {round_num} 시작"
+                      f" (경과 {elapsed:.0f}초 / 기준 {wait_sec}초)")
+                time.sleep(remaining)
+            else:
+                print(f"\n[RETRY] 실패 {len(pending)}건 - 이미 {elapsed:.0f}초 경과, 즉시 Round {round_num} 시작")
 
         still_failed: list[MinistryConfig] = []
+        last_failure_time = None  # 라운드마다 초기화
 
         for ministry_cfg in pending:
             name = ministry_cfg.name
 
             if scraper_map.get(name) is None:
-                print(f"[SKIP] {name} — 스크래퍼 미구현")
+                print(f"[SKIP] {name} - 스크래퍼 미구현")
                 try:
                     log_scrape_entry({"run_id": run_id, "ministry": name,
                         "status": "skipped", "round_num": round_num,
@@ -168,7 +188,7 @@ def main() -> None:
             print(f"[START] {name} {label}".rstrip())
             try:
                 items, _ = _run_one(name, args)
-                print(f"[DONE]  {name} — {len(items)}건 수집")
+                print(f"[DONE]  {name} - {len(items)}건 수집")
 
                 # 부처별로 바로 Supabase 저장 (실패해도 다음 부처 계속)
                 inserted = 0
@@ -190,6 +210,7 @@ def main() -> None:
             except Exception as e:
                 err = str(e)[:500]  # 너무 긴 에러 메시지 자르기
                 print(f"[ERROR] {name}: {err}")
+                last_failure_time = time.time()
                 still_failed.append(ministry_cfg)
                 try:
                     log_scrape_entry({"run_id": run_id, "ministry": name,

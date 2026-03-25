@@ -68,6 +68,7 @@ class MafraScraper(BaseGovScraper):
                     resp.raise_for_status()
                 except Exception as e:
                     print(f"[MAFRA] POST 최종 실패: {e}")
+                    self.had_connection_error = True
                     break
 
                 soup = BeautifulSoup(resp.text, "html.parser")

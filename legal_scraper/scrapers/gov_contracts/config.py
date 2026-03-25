@@ -27,12 +27,6 @@ MINISTRIES: list[MinistryConfig] = [
         notes="정형 게시판 GET",
     ),
     MinistryConfig(
-        name="조달청",
-        scrape_type="board_post",
-        base_url="https://www.pps.go.kr/kor/bbs/list.do?key=00029",
-        notes="jsessionid 필요",
-    ),
-    MinistryConfig(
         name="중소벤처기업부",
         scrape_type="board_post",
         base_url="https://www.mss.go.kr/site/smba/ex/bbs/List.do?cbIdx=605",
@@ -131,5 +125,48 @@ MINISTRIES: list[MinistryConfig] = [
         scrape_type="playwright",
         base_url="https://www.moip.go.kr/ko/searchView.do",
         notes="JS 렌더링",
+    ),
+    # ── 유형 B: 검색 POST ─────────────────────────────────────────
+    MinistryConfig(
+        name="관세청",
+        scrape_type="search_get",
+        base_url="https://www.customs.go.kr/search/search.jsp",
+        search_keyword="계약서",
+        notes="POST searchField=SJ collection=attach, 관세청 전용 키워드",
+    ),
+    MinistryConfig(
+        name="행정중심복합도시건설청",
+        scrape_type="board_get",
+        base_url="https://naacc.go.kr/WEB/contents/N4040200000.do",
+        search_keyword="계약",
+        notes="GET schStr=키워드, 상세 페이지에서 첨부파일 수집",
+    ),
+    MinistryConfig(
+        name="산림청",
+        scrape_type="search_get",
+        base_url="https://www.forest.go.kr/kfsweb/kfs/search.do",
+        search_keyword="계약서",
+        notes="GET category=CMS, 상세페이지에서 FileDown.do 수집, curl_cffi chrome",
+    ),
+    MinistryConfig(
+        name="외교부",
+        scrape_type="search_get",
+        base_url="https://search.mofa.go.kr/search/consulSearch.do",
+        search_keyword="촉탁서",
+        notes="POST JSON API, attach_embd_ko 컬렉션, 파일명 기준 중복 제거",
+    ),
+    MinistryConfig(
+        name="국가보훈부",
+        scrape_type="search_get",
+        base_url="https://www.mpva.go.kr/search/search.jsp",
+        search_keyword="계약서",
+        notes="GET collection=minwon (민원/보상 탭), 상세페이지 p-attach 첨부파일, curl_cffi chrome",
+    ),
+    MinistryConfig(
+        name="성평등가족부",
+        scrape_type="board_post",
+        base_url="https://www.mogef.go.kr/as/asl/as_asl_s001.do",
+        search_keyword="계약",
+        notes="POST searchTerm=키워드, 카테고리(NEWS/SUB/INFO/ETC/EDU) 순회, fn_fileDownload 파싱",
     ),
 ]

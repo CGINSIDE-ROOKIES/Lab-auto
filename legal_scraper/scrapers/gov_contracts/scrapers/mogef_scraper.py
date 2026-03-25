@@ -177,6 +177,7 @@ class MogefScraper(BaseGovScraper):
                 file_url = (
                     f"{BASE_URL}/file/download.do"
                     f"?filedir={quote(atfile_dir)}&sysnm={quote(atfile_sysnm)}"
+                    f"&orgnm={quote(atfile_orgnm)}"
                 )
                 file_ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
 
@@ -193,6 +194,7 @@ class MogefScraper(BaseGovScraper):
                     source_url=SOURCE_URL,
                     registered_date=registered_date,
                     file_ext=file_ext,
+                    download_post_data={"atfileSn": atfile_sn, "atfileSeq": atfile_seq},
                 ))
 
 

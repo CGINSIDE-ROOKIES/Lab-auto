@@ -43,15 +43,22 @@ class MoelScraper(BaseGovScraper):
         for keyword in CONTRACT_KEYWORDS:
             page_num = 1
             while True:
-                url = f"{LIST_URL}?searchText={urllib.parse.quote(keyword)}&pageIndex={page_num}"
+                data = {
+                    "pageIndex": str(page_num),
+                    "searchKey": "",
+                    "searchField": "4",
+                    "searchText": keyword,
+                    "pageUnit": "10",
+                }
                 time.sleep(self.request_delay)
                 try:
                     resp = self._request_with_retry(
-                        lambda: self.session.get(url, timeout=30)
+                        lambda: self.session.post(LIST_URL, data=data, timeout=30)
                     )
                     resp.raise_for_status()
                 except Exception as e:
                     print(f"[MOEL] 목록 요청 최종 실패: {e}")
+                    self.had_connection_error = True
                     break
 
                 soup = BeautifulSoup(resp.text, "html.parser")
@@ -156,9 +163,9 @@ class MoelScraper(BaseGovScraper):
                             file_ext=file_ext,
                         ))
 
-                # 다음 페이지 확인
-                next_btn = soup.find("a", class_=lambda c: c and "next" in " ".join(c) if c else False)
-                if not next_btn or not page_had_items:
+                # 다음 페이지 확인 — 페이지 번호 링크 존재 여부로 판단
+                has_next_page = bool(soup.find("a", href=f"?pageIndex={page_num + 1}"))
+                if not has_next_page or not page_had_items:
                     break
 
                 page_num += 1

@@ -52,6 +52,7 @@ def download_file(
     save_dir: str | Path,
     session: Optional[requests.Session] = None,
     filename: Optional[str] = None,
+    post_data: Optional[dict] = None,
 ) -> str:
     """
     파일을 다운로드하고 로컬 경로를 반환한다.
@@ -72,7 +73,10 @@ def download_file(
         "Chrome/124.0.0.0 Safari/537.36",
     )
 
-    resp = client.get(url, stream=True, timeout=60)
+    if post_data is not None:
+        resp = client.post(url, data=post_data, stream=True, timeout=60)
+    else:
+        resp = client.get(url, stream=True, timeout=60)
     resp.raise_for_status()
 
     if not filename:
