@@ -2,7 +2,7 @@
 계약서 관련 파일/게시글 필터링
 """
 
-CONTRACT_KEYWORDS = ["계약서", "약정서"]
+CONTRACT_KEYWORDS = ["계약서", "약정서", "서약서"]
 
 # 제목에 이 단어가 포함되면 수집 제외 (전체 공통)
 EXCLUDE_TITLE_KEYWORDS = ["수의", "합격", "포스터"]

@@ -222,7 +222,7 @@ class ForestScraper(BaseGovScraper):
                     print(f"[FOREST] {page_num}페이지 결과 없음, 중단")
                     break
 
-                print(f"[FOREST] {page_num}/{total_pages} — 상세페이지 {len(results)}건 진입")
+                print(f"[FOREST] {page_num}/{total_pages} - 상세페이지 {len(results)}건 진입")
 
                 for detail_url, date in results:
                     if detail_url in seen:

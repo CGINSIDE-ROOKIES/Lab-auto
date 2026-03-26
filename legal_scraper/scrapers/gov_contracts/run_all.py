@@ -101,6 +101,12 @@ def parse_args() -> argparse.Namespace:
         help="특정 유형만 수집",
     )
     parser.add_argument("--no-download", action="store_true", help="파일 다운로드 생략")
+    parser.add_argument(
+        "--keyword",
+        metavar="KW",
+        nargs="+",
+        help="수집 키워드 지정 (기본값 덮어쓰기). 예: --keyword 서약서",
+    )
     return parser.parse_args()
 
 
@@ -120,6 +126,7 @@ def _run_one(name: str, args: argparse.Namespace) -> tuple[list, str | None]:
         return [], None  # 미구현 → 에러 아님
 
     scraper = scraper_cls()
+    scraper.on_progress = lambda count, msg: print(f"  [PROG] {msg} ({count}건)")
     items = scraper.run()
 
     if not args.no_download:
@@ -149,6 +156,11 @@ def main() -> None:
     if not targets:
         print("수집 대상 부처가 없습니다.")
         sys.exit(1)
+
+    if args.keyword:
+        import legal_scraper.scrapers.gov_contracts.utils.file_filter as _ff
+        _ff.CONTRACT_KEYWORDS = args.keyword
+        print(f"[INFO] 키워드 override: {args.keyword}")
 
     run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     all_items: list = []

@@ -164,7 +164,7 @@ class MpvaScraper(BaseGovScraper):
                     break
 
                 page_num = start_count // PAGE_SIZE + 1
-                print(f"[MPVA] startCount={start_count} — 상세페이지 {len(detail_links)}건 진입")
+                print(f"[MPVA] startCount={start_count} - 상세페이지 {len(detail_links)}건 진입")
 
                 for detail_url in detail_links:
                     if detail_url in seen:
