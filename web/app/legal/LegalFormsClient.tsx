@@ -27,13 +27,14 @@ type Props = {
 
 const COLUMNS: Column<UnifiedForm>[] = [
   { key: "uid", label: "일련번호" },
-  { key: "source_name", label: "출처" },
+  { key: "source_name", label: "출처", style: { whiteSpace: "nowrap", width: "1%" } },
   { key: "form_title", label: "서식제목" },
   { key: "doc_format", label: "형식" },
   {
     key: "collected_at",
     label: "수집일",
     render: (v) => new Date(v as string).toLocaleDateString("ko-KR"),
+    style: { whiteSpace: "nowrap", width: "1%" },
   },
   {
     key: "download_url",

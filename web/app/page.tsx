@@ -1,17 +1,34 @@
 import { createClient } from "@/lib/supabase/server";
+import { SourceCharts } from "./SourceChart";
+
+const LEGAL_SOURCES = ["대한법률구조공단", "전자소송포털"];
 
 export default async function HomePage() {
   const supabase = await createClient();
 
-  const { count: totalCount } = await supabase
-    .from("unified_forms")
-    .select("*", { count: "exact", head: true });
+  const [
+    { count: totalCount },
+    { data: recentGov },
+    { data: sourceCounts },
+  ] = await Promise.all([
+    supabase.from("unified_forms").select("*", { count: "exact", head: true }),
+    supabase
+      .from("unified_forms")
+      .select("source_name, form_title, collected_at")
+      .order("collected_at", { ascending: false })
+      .limit(5),
+    supabase.from("unified_forms").select("source_name"),
+  ]);
 
-  const { data: recentGov } = await supabase
-    .from("unified_forms")
-    .select("source_name, form_title, collected_at")
-    .order("collected_at", { ascending: false })
-    .limit(5);
+  const countMap: Record<string, number> = {};
+  for (const row of sourceCounts ?? []) {
+    if (row.source_name) countMap[row.source_name] = (countMap[row.source_name] ?? 0) + 1;
+  }
+  const toSorted = (names: string[]) =>
+    names.map((n) => ({ source_name: n, count: countMap[n] ?? 0 })).sort((a, b) => b.count - a.count);
+
+  const legalSources = toSorted(Object.keys(countMap).filter((n) => LEGAL_SOURCES.includes(n)));
+  const govSources = toSorted(Object.keys(countMap).filter((n) => !LEGAL_SOURCES.includes(n)));
 
   return (
     <div className="space-y-8">
@@ -21,10 +38,15 @@ export default async function HomePage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4">
-        <a href="/contracts" className="block p-6 bg-white rounded-lg border border-gray-200 hover:border-blue-400 transition-colors">
+        <a href="/legal" className="block p-6 bg-white rounded-lg border border-gray-200 hover:border-blue-400 transition-colors">
           <div className="text-3xl font-bold text-blue-600">{totalCount?.toLocaleString() ?? "—"}</div>
           <div className="text-sm text-gray-600 mt-1">수집된 서식 총계</div>
         </a>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-semibold mb-3">출처별 서식 수</h2>
+        <SourceCharts legal={legalSources} gov={govSources} />
       </div>
 
       <div>

@@ -4,6 +4,8 @@ export type Column<T> = {
   key: keyof T;
   label: string;
   render?: (value: T[keyof T], row: T) => React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
 };
 
 type Props<T> = {
@@ -38,7 +40,7 @@ export function DataTable<T>({ columns, data, emptyMessage = "데이터가 없�
           {data.map((row, i) => (
             <tr key={i} className="hover:bg-gray-50">
               {columns.map((col) => (
-                <td key={String(col.key)} className="px-3 py-2">
+                <td key={String(col.key)} className={`px-3 py-2${col.className ? ` ${col.className}` : ""}`} style={col.style}>
                   {col.render
                     ? col.render(row[col.key], row)
                     : String(row[col.key] ?? "")}
