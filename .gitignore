@@ -31,3 +31,13 @@ web/.env.local
 *.xls
 *.xlsm
 !legal_scraper/data/분류체계.xlsx
+
+# 디버깅 임시 파일
+*.html
+*.txt
+
+# Claude Code 설정
+.claude/
+
+# DB 스냅샷 (로컬 캐시)
+legal_scraper/data/
