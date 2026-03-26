@@ -52,10 +52,10 @@ def upsert_gov_contracts(items: list[FormItem]) -> int:
 
     rows = [
         {
-            "ministry": item.ministry,
+            "source": item.source,
             "title": item.title,
             "file_name": item.file_name,
-            "file_ext": item.file_ext,
+            "file_format": item.file_format,
             "department": item.department,
             "registered_date": item.registered_date,
             "source_url": item.source_url,

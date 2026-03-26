@@ -154,12 +154,12 @@ class NtsScraper(BaseGovScraper):
             file_name = f"{title}.{file_ext}" if file_ext else title
 
         return FormItem(
-            ministry=MINISTRY_NAME,
+            source=MINISTRY_NAME,
             title=title,
             file_name=file_name,
             file_url=file_url,
             source_url=LIST_PAGE_URL,
             registered_date=registered_date,
             department=department,
-            file_ext=file_ext,
+            file_format=file_ext,
         )

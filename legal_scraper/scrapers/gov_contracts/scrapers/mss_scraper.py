@@ -124,13 +124,13 @@ class MssScraper(BasePlaywrightScraper):
                 file_ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
 
                 all_items.append(FormItem(
-                    ministry=MINISTRY_NAME,
+                    source=MINISTRY_NAME,
                     title=title,
                     file_name=file_name,
                     file_url=file_url,
                     source_url=detail_url,
                     registered_date=registered_date,
-                    file_ext=file_ext,
+                    file_format=file_ext,
                 ))
 
         return all_items

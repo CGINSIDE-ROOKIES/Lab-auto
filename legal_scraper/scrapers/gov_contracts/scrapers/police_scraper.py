@@ -7,9 +7,6 @@
   {ORGINL_FILE_NM=..., FILE_COURS_WEB=..., REGIST_DT=...}
 - .pagination li a[onclick*='page('] 으로 전체 페이지 수 파악
 
-※ 경찰청 전용 키워드(POLICE_CONTRACT_KEYWORDS)를 사용하며,
-   전역 CONTRACT_KEYWORDS(계약/약정서)와 완전히 독립적으로 동작합니다.
-   새 키워드 추가 시 POLICE_CONTRACT_KEYWORDS 리스트에만 추가하면 됩니다.
 """
 from __future__ import annotations
 
@@ -20,14 +17,11 @@ import time
 from curl_cffi import requests as cffi_requests
 
 from ..base_scraper import BaseGovScraper, FormItem
+from ..utils.file_filter import CONTRACT_KEYWORDS
 
 MINISTRY_NAME = "경찰청"
 BASE_URL = "https://www.police.go.kr"
 SEARCH_URL = f"{BASE_URL}/user/search/ND_searchResult.do"
-
-POLICE_CONTRACT_KEYWORDS: list[str] = [
-    "무기계약",
-]
 
 # HTML 주석 안의 fileResultList 블록
 _RESULT_LIST_RE = re.compile(
@@ -128,32 +122,23 @@ class PoliceScraper(BaseGovScraper):
             source_url = f"{SEARCH_URL}?searchTerm={keyword}&colTarget=doc"
 
             items.append(FormItem(
-                ministry=MINISTRY_NAME,
+                source=MINISTRY_NAME,
                 title=file_name,
                 file_name=file_name,
                 file_url=file_url,
                 source_url=source_url,
                 registered_date=reg_dt,
-                file_ext=file_ext,
+                file_format=file_ext,
             ))
         return items
 
     # ── BaseGovScraper 구현 ────────────────────────────────────────
 
-    def filter_by_keyword(self, items: list[FormItem]) -> list[FormItem]:
-        from ..utils.file_filter import EXCLUDE_TITLE_KEYWORDS
-        return [
-            item for item in items
-            if any(kw in (item.file_name or item.title) for kw in POLICE_CONTRACT_KEYWORDS)
-            and item.file_ext.lower() not in self._EXCLUDED_EXTS
-            and not any(kw in item.title for kw in EXCLUDE_TITLE_KEYWORDS)
-        ]
-
     def fetch_items(self) -> list[FormItem]:
         all_items: list[FormItem] = []
         seen: set[str] = set()
 
-        for keyword in POLICE_CONTRACT_KEYWORDS:
+        for keyword in CONTRACT_KEYWORDS:
             print(f"[POLICE] 키워드={keyword} 검색 시작")
             try:
                 first_html = self._post(keyword, 1)

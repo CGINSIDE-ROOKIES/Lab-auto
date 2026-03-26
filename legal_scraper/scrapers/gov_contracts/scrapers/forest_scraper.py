@@ -7,9 +7,6 @@
 - 검색결과: div.srch_board > div.srchB_title a (상세 링크), span.date (날짜)
 - 상세페이지: a[href*='FileDown.do'] 파싱 → 파일명은 주변 텍스트에서 추출
 
-※ 산림청 전용 키워드(FOREST_CONTRACT_KEYWORDS)를 사용하며,
-   전역 CONTRACT_KEYWORDS(계약/약정서)와 완전히 독립적으로 동작합니다.
-   새 키워드 추가 시 FOREST_CONTRACT_KEYWORDS 리스트에만 추가하면 됩니다.
 """
 from __future__ import annotations
 
@@ -20,14 +17,11 @@ from bs4 import BeautifulSoup
 from curl_cffi import requests as cffi_requests
 
 from ..base_scraper import BaseGovScraper, FormItem
+from ..utils.file_filter import CONTRACT_KEYWORDS
 
 MINISTRY_NAME = "산림청"
 BASE_URL = "https://www.forest.go.kr"
 SEARCH_URL = f"{BASE_URL}/kfsweb/kfs/search.do"
-
-FOREST_CONTRACT_KEYWORDS: list[str] = [
-    "계약서",
-]
 
 _SKIP_LINK_TEXTS = {"자료받기", "다운로드", "download", "내려받기", "첨부파일"}
 
@@ -142,13 +136,13 @@ def _parse_attachments(soup: BeautifulSoup, source_url: str, date: str) -> list[
 
         seen.add(file_url)
         items.append(FormItem(
-            ministry=MINISTRY_NAME,
+            source=MINISTRY_NAME,
             title=file_name,
             file_name=file_name,
             file_url=file_url,
             source_url=source_url,
             registered_date=date,
-            file_ext=file_ext,
+            file_format=file_ext,
         ))
 
     return items
@@ -198,20 +192,11 @@ class ForestScraper(BaseGovScraper):
 
     # ── BaseGovScraper 구현 ────────────────────────────────────────
 
-    def filter_by_keyword(self, items: list[FormItem]) -> list[FormItem]:
-        from ..utils.file_filter import EXCLUDE_TITLE_KEYWORDS
-        return [
-            item for item in items
-            if any(kw in (item.file_name or item.title) for kw in FOREST_CONTRACT_KEYWORDS)
-            and item.file_ext.lower() not in self._EXCLUDED_EXTS
-            and not any(kw in item.title for kw in EXCLUDE_TITLE_KEYWORDS)
-        ]
-
     def fetch_items(self) -> list[FormItem]:
         all_items: list[FormItem] = []
         seen: set[str] = set()
 
-        for keyword in FOREST_CONTRACT_KEYWORDS:
+        for keyword in CONTRACT_KEYWORDS:
             print(f"[FOREST] 키워드={keyword} 검색 시작")
             try:
                 first_html = self._search(keyword, 1)

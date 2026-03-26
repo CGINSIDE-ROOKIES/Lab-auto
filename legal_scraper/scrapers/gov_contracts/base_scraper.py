@@ -14,21 +14,21 @@ from bs4 import BeautifulSoup
 
 @dataclass
 class FormItem:
-    ministry: str
+    source: str
     title: str
     file_name: str
     file_url: str
     source_url: str
     registered_date: str
     department: str = ""
-    file_ext: str = ""
+    file_format: str = ""
     local_path: str = ""
     download_post_data: dict | None = None
 
     def __post_init__(self):
-        if not self.file_ext and self.file_name:
+        if not self.file_format and self.file_name:
             parts = self.file_name.rsplit(".", 1)
-            self.file_ext = parts[-1].lower() if len(parts) == 2 else ""
+            self.file_format = parts[-1].lower() if len(parts) == 2 else ""
 
     def has_contract_keyword(self) -> bool:
         """파일명 우선, 없으면 제목에서 계약서·약정서 검사"""
@@ -102,15 +102,15 @@ class BaseGovScraper(ABC):
 
     # ── 공통 구현 ──────────────────────────────────────────────────
 
-    _EXCLUDED_EXTS = {"jpg", "jpeg", "png", "gif", "bmp", "svg", "webp"}
+    _EXCLUDED_EXTS = {"jpg", "jpeg", "png", "gif", "bmp", "svg", "webp", "xlsx", "xls"}
 
     def filter_by_keyword(self, items: list[FormItem]) -> list[FormItem]:
         from .utils.file_filter import EXCLUDE_TITLE_KEYWORDS
         return [
             item for item in items
             if item.has_contract_keyword()
-            and item.file_ext.lower() not in self._EXCLUDED_EXTS
-            and not any(kw in item.title for kw in EXCLUDE_TITLE_KEYWORDS)
+            and item.file_format.lower() not in self._EXCLUDED_EXTS
+            and not any(kw in item.title or kw in item.file_name for kw in EXCLUDE_TITLE_KEYWORDS)
         ]
 
     def run(self) -> list[FormItem]:

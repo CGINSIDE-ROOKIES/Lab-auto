@@ -127,6 +127,14 @@ export function ContractsClient({ initialData, totalCount, page, pageSize, sourc
       <div className="bg-white p-3 rounded-lg border border-gray-200 text-sm">
         <div className="flex items-center gap-2 mb-2">
           <span className="font-medium text-gray-600">출처 필터</span>
+          {selectedSources.length < sources.length && (
+            <button
+              onClick={() => { setSelectedSources([...sources]); router.push(buildUrl({ sources: [...sources], page: 1 })); }}
+              className="text-xs text-blue-500 hover:underline"
+            >
+              전체 선택
+            </button>
+          )}
           {selectedSources.length > 0 && (
             <button
               onClick={() => { setSelectedSources([]); router.push(buildUrl({ sources: [], page: 1 })); }}

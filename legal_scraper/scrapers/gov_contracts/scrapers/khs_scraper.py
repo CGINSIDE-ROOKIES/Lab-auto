@@ -110,13 +110,13 @@ class KhsScraper(BasePlaywrightScraper):
                         seen.add(file_url)
 
                         all_items.append(FormItem(
-                            ministry=MINISTRY_NAME,
+                            source=MINISTRY_NAME,
                             title=title,
                             file_name=file_name,
                             file_url=file_url,
                             source_url=source_url,
                             registered_date=registered_date,
-                            file_ext=file_ext,
+                            file_format=file_ext,
                         ))
 
                 if len(rows) < PAGE_SIZE:

@@ -174,13 +174,13 @@ class MohwScraper(BasePlaywrightScraper):
                     if dedup_key not in seen:
                         seen.add(dedup_key)
                         items.append(FormItem(
-                            ministry=MINISTRY_NAME,
+                            source=MINISTRY_NAME,
                             title=raw_title,
                             file_name="",
                             file_url=source_url,
                             source_url=source_url,
                             registered_date=registered_date,
-                            file_ext="",
+                            file_format="",
                         ))
                 continue
 
@@ -211,11 +211,11 @@ class MohwScraper(BasePlaywrightScraper):
                 seen.add(dedup_key)
 
                 items.append(FormItem(
-                    ministry=MINISTRY_NAME,
+                    source=MINISTRY_NAME,
                     title=title,
                     file_name=file_name,
                     file_url=file_url,
                     source_url=source_url,
                     registered_date=registered_date,
-                    file_ext=file_ext,
+                    file_format=file_ext,
                 ))

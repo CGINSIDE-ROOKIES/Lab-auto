@@ -258,11 +258,11 @@ class MsitScraper(BaseGovScraper):
             seen_file_urls.add(file_url)
 
             all_items.append(FormItem(
-                ministry=MINISTRY_NAME,
+                source=MINISTRY_NAME,
                 title=post_title or file_name,
                 file_name=file_name,
                 file_url=file_url,
                 source_url=source_url,
                 registered_date=registered_date,
-                file_ext=file_ext,
+                file_format=file_ext,
             ))

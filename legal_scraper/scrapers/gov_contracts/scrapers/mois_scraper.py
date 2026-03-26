@@ -142,13 +142,13 @@ class MoisScraper(BasePlaywrightScraper):
                     print(f"[MOIS] 상세 페이지 오류: {e}")
 
                 all_items.append(FormItem(
-                    ministry=MINISTRY_NAME,
+                    source=MINISTRY_NAME,
                     title=file_name,
                     file_name=file_name,
                     file_url=file_url,
                     source_url=article_url,
                     registered_date=registered_date,
-                    file_ext=file_ext,
+                    file_format=file_ext,
                 ))
 
         return all_items

@@ -10,9 +10,6 @@
     → a.download    : 다운로드 URL (/bbs/moj/{boardId}/{fileId}/download.do)
     → a[href*=artclView.do] : 상세 페이지 URL
 
-※ 법무부 전용 키워드(MOJ_CONTRACT_KEYWORDS)를 사용하며,
-   전역 CONTRACT_KEYWORDS(계약/약정서)와 완전히 독립적으로 동작합니다.
-   새 키워드 추가 시 MOJ_CONTRACT_KEYWORDS 리스트에만 추가하면 됩니다.
 """
 from __future__ import annotations
 
@@ -24,17 +21,11 @@ import requests
 from bs4 import BeautifulSoup
 
 from ..base_scraper import BaseGovScraper, FormItem
+from ..utils.file_filter import CONTRACT_KEYWORDS
 
 MINISTRY_NAME = "법무부"
 BASE_URL = "https://www.moj.go.kr"
 SEARCH_URL = f"{BASE_URL}/moj/3521/subview.do"
-
-# ── 법무부 전용 키워드 ────────────────────────────────────────────────
-# 전역 CONTRACT_KEYWORDS 와 독립적으로 관리됩니다.
-# 새 키워드가 필요하면 이 리스트에만 추가하세요.
-MOJ_CONTRACT_KEYWORDS: list[str] = [
-    "계약서",
-]
 
 VIEW_COUNT = 10
 
@@ -60,24 +51,13 @@ class MojScraper(BaseGovScraper):
         except Exception:
             pass  # GET 실패 시 POST 단계에서 재시도
 
-    # ── 키워드 필터 재정의 (전역 CONTRACT_KEYWORDS 와 독립) ─────────────
-
-    def filter_by_keyword(self, items: list[FormItem]) -> list[FormItem]:
-        from ..utils.file_filter import EXCLUDE_TITLE_KEYWORDS
-        return [
-            item for item in items
-            if any(kw in (item.file_name or item.title) for kw in MOJ_CONTRACT_KEYWORDS)
-            and item.file_ext.lower() not in self._EXCLUDED_EXTS
-            and not any(kw in item.title for kw in EXCLUDE_TITLE_KEYWORDS)
-        ]
-
     # ── 수집 진입점 ───────────────────────────────────────────────────
 
     def fetch_items(self) -> list[FormItem]:
         all_items: list[FormItem] = []
         seen_file_urls: set[str] = set()
 
-        for keyword in MOJ_CONTRACT_KEYWORDS:
+        for keyword in CONTRACT_KEYWORDS:
             self._search_keyword(keyword, seen_file_urls, all_items)
 
         return all_items
@@ -202,13 +182,13 @@ class MojScraper(BaseGovScraper):
             title = raw_name.rsplit(".", 1)[0] if file_ext else raw_name
 
             items.append(FormItem(
-                ministry=MINISTRY_NAME,
+                source=MINISTRY_NAME,
                 title=title,
                 file_name=file_name,
                 file_url=file_url,
                 source_url=source_url,
                 registered_date=registered_date,
-                file_ext=file_ext,
+                file_format=file_ext,
             ))
 
         return items

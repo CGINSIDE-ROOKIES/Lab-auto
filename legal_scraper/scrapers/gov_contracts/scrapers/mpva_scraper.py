@@ -8,9 +8,6 @@
 - 상세페이지: ul.p-attach a.p-attach__link → ./downloadBbsFile.do?atchmnflNo=N
   파일명: 링크 텍스트에서 아이콘 접두어("hwp 문서" 등) 제거
 
-※ 국가보훈부 전용 키워드(MPVA_CONTRACT_KEYWORDS)를 사용하며,
-   전역 CONTRACT_KEYWORDS(계약/약정서)와 완전히 독립적으로 동작합니다.
-   새 키워드 추가 시 MPVA_CONTRACT_KEYWORDS 리스트에만 추가하면 됩니다.
 """
 from __future__ import annotations
 
@@ -21,16 +18,13 @@ from bs4 import BeautifulSoup
 from curl_cffi import requests as cffi_requests
 
 from ..base_scraper import BaseGovScraper, FormItem
+from ..utils.file_filter import CONTRACT_KEYWORDS
 
 MINISTRY_NAME = "국가보훈부"
 BASE_URL = "https://www.mpva.go.kr"
 SEARCH_URL = f"{BASE_URL}/search/search.jsp"
 DETAIL_BASE = f"{BASE_URL}/mpva"
 PAGE_SIZE = 10
-
-MPVA_CONTRACT_KEYWORDS: list[str] = [
-    "계약서",
-]
 
 # "hwp 문서", "pdf 문서", "xlsx 문서" 등 아이콘 접두어 제거
 _ICON_PREFIX_RE = re.compile(r"^[\w]+\s+문서\s*", re.IGNORECASE)
@@ -89,13 +83,13 @@ def _parse_attachments(soup: BeautifulSoup, source_url: str, date: str) -> list[
 
         seen.add(file_url)
         items.append(FormItem(
-            ministry=MINISTRY_NAME,
+            source=MINISTRY_NAME,
             title=file_name,
             file_name=file_name,
             file_url=file_url,
             source_url=source_url,
             registered_date=date,
-            file_ext=file_ext,
+            file_format=file_ext,
         ))
 
     return items
@@ -144,20 +138,11 @@ class MpvaScraper(BaseGovScraper):
 
     # ── BaseGovScraper 구현 ────────────────────────────────────────
 
-    def filter_by_keyword(self, items: list[FormItem]) -> list[FormItem]:
-        from ..utils.file_filter import EXCLUDE_TITLE_KEYWORDS
-        return [
-            item for item in items
-            if any(kw in (item.file_name or item.title) for kw in MPVA_CONTRACT_KEYWORDS)
-            and item.file_ext.lower() not in self._EXCLUDED_EXTS
-            and not any(kw in item.title for kw in EXCLUDE_TITLE_KEYWORDS)
-        ]
-
     def fetch_items(self) -> list[FormItem]:
         all_items: list[FormItem] = []
         seen: set[str] = set()
 
-        for keyword in MPVA_CONTRACT_KEYWORDS:
+        for keyword in CONTRACT_KEYWORDS:
             print(f"[MPVA] 키워드={keyword} 검색 시작")
             start_count = 0
 

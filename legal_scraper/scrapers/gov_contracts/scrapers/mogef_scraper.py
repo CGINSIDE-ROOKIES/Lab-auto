@@ -187,13 +187,13 @@ class MogefScraper(BaseGovScraper):
                 seen.add(dedup_key)
 
                 items.append(FormItem(
-                    ministry=MINISTRY_NAME,
+                    source=MINISTRY_NAME,
                     title=title,
                     file_name=file_name,
                     file_url=file_url,
                     source_url=SOURCE_URL,
                     registered_date=registered_date,
-                    file_ext=file_ext,
+                    file_format=file_ext,
                     download_post_data={"atfileSn": atfile_sn, "atfileSeq": atfile_seq},
                 ))
 

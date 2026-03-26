@@ -120,7 +120,7 @@ class FtcScraper(BaseGovScraper):
 
             items.append(
                 FormItem(
-                    ministry=MINISTRY_NAME,
+                    source=MINISTRY_NAME,
                     title=title,
                     file_name="",       # HEAD 요청 후 보강
                     file_url=file_url,
@@ -147,7 +147,7 @@ class FtcScraper(BaseGovScraper):
                 if filename:
                     item.file_name = filename
                     parts = filename.rsplit(".", 1)
-                    item.file_ext = parts[-1].lower() if len(parts) == 2 else ""
+                    item.file_format = parts[-1].lower() if len(parts) == 2 else ""
             except Exception:
                 pass
 

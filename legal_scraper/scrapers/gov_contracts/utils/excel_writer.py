@@ -40,10 +40,10 @@ _HEADER_ALIGN = Alignment(horizontal="center", vertical="center")
 def _item_to_row(seq: int, item: FormItem) -> list:
     return [
         seq,
-        item.ministry,
+        item.source,
         item.title,
         item.file_name,
-        item.file_ext,
+        item.file_format,
         item.department,
         item.registered_date,
         item.source_url,

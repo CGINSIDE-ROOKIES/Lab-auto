@@ -54,8 +54,8 @@ class MofaScraper(BaseGovScraper):
         return [
             item for item in items
             if any(kw in (item.file_name or item.title) for kw in MOFA_KEYWORDS)
-            and item.file_ext.lower() not in self._EXCLUDED_EXTS
-            and not any(kw in item.title for kw in EXCLUDE_TITLE_KEYWORDS)
+            and item.file_format.lower() not in self._EXCLUDED_EXTS
+            and not any(kw in item.title or kw in item.file_name for kw in EXCLUDE_TITLE_KEYWORDS)
         ]
 
     # ── 수집 진입점 ───────────────────────────────────────────────────
@@ -173,11 +173,11 @@ class MofaScraper(BaseGovScraper):
         source_url = doc.get("LINK_URL", "").strip()
 
         return FormItem(
-            ministry=MINISTRY_NAME,
+            source=MINISTRY_NAME,
             title=title,
             file_name=file_name,
             file_url=file_url,
             source_url=source_url,
             registered_date=registered_date,
-            file_ext=file_ext,
+            file_format=file_ext,
         )

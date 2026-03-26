@@ -146,13 +146,13 @@ class NaaccScraper(BaseGovScraper):
                     file_ext = parts[1].lower()
 
             items.append(FormItem(
-                ministry=MINISTRY_NAME,
+                source=MINISTRY_NAME,
                 title=title,
                 file_name=file_name,
                 file_url=file_url,
                 source_url=f"{BOARD_URL}?schM=view&id={row_id}",
                 registered_date=date,
                 department=dept,
-                file_ext=file_ext,
+                file_format=file_ext,
             ))
         return items

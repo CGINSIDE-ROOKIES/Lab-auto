@@ -197,13 +197,13 @@ class RdaScraper(BasePlaywrightScraper):
                 found_any = True
 
                 all_items.append(FormItem(
-                    ministry=MINISTRY_NAME,
+                    source=MINISTRY_NAME,
                     title=file_name,
                     file_name=file_name,
                     file_url=file_url,
                     source_url=BASE_URL + "/search/engineSearch.do",
                     registered_date=registered_date,
-                    file_ext=file_ext,
+                    file_format=file_ext,
                 ))
 
         return found_any

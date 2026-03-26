@@ -153,14 +153,14 @@ class MoelScraper(BaseGovScraper):
                             file_ext = file_name.rsplit(".", 1)[-1].lower()
 
                         all_items.append(FormItem(
-                            ministry=MINISTRY_NAME,
+                            source=MINISTRY_NAME,
                             title=title,
                             file_name=file_name,
                             file_url=file_url,
                             source_url=source_url,
                             registered_date=registered_date,
                             department=department,
-                            file_ext=file_ext,
+                            file_format=file_ext,
                         ))
 
                 # 다음 페이지 확인 — 페이지 번호 링크 존재 여부로 판단
