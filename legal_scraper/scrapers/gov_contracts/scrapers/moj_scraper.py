@@ -56,9 +56,10 @@ class MojScraper(BaseGovScraper):
     def fetch_items(self) -> list[FormItem]:
         all_items: list[FormItem] = []
         seen_file_urls: set[str] = set()
+        seen_title_formats: set[tuple] = set()
 
         for keyword in CONTRACT_KEYWORDS:
-            self._search_keyword(keyword, seen_file_urls, all_items)
+            self._search_keyword(keyword, seen_file_urls, seen_title_formats, all_items)
 
         return all_items
 
@@ -68,12 +69,13 @@ class MojScraper(BaseGovScraper):
         self,
         keyword: str,
         seen_file_urls: set[str],
+        seen_title_formats: set[tuple],
         all_items: list[FormItem],
     ) -> None:
         start_count = 0
         while True:
             soup = self._post_search(keyword, start_count)
-            items_on_page = self._parse_items(soup, seen_file_urls)
+            items_on_page = self._parse_items(soup, seen_file_urls, seen_title_formats)
             all_items.extend(items_on_page)
 
             if self.on_progress:
@@ -132,6 +134,7 @@ class MojScraper(BaseGovScraper):
         self,
         soup: BeautifulSoup,
         seen_file_urls: set[str],
+        seen_title_formats: set[tuple],
     ) -> list[FormItem]:
         items: list[FormItem] = []
 
@@ -171,15 +174,21 @@ class MojScraper(BaseGovScraper):
                 continue
             seen_file_urls.add(file_url)
 
-            # 파일명·확장자 분리
+            # 파일명·확장자 분리 (중복 체크보다 먼저 수행)
             file_name = raw_name
             file_ext = ""
             if "." in raw_name:
                 parts = raw_name.rsplit(".", 1)
-                if len(parts[1]) <= 5:  # 확장자로 보이는 짧은 suffix
+                if len(parts[1]) <= 5:
                     file_ext = parts[1].lower()
 
             title = raw_name.rsplit(".", 1)[0] if file_ext else raw_name
+
+            # 제목+포맷 기준 중복 제거 (같은 파일이 다른 URL로 중복 업로드되는 경우)
+            title_fmt_key = (title, file_ext)
+            if title_fmt_key in seen_title_formats:
+                continue
+            seen_title_formats.add(title_fmt_key)
 
             items.append(FormItem(
                 source=MINISTRY_NAME,
