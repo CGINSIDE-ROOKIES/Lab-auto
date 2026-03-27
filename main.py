@@ -26,7 +26,44 @@ if str(_LS_DIR) not in sys.path:
     sys.path.insert(0, str(_LS_DIR))
 
 
-def _run_legal() -> None:
+def _process_klac_rows(rows: list[dict]) -> list[dict]:
+    """KLAC 항목의 HWP 파일을 다운로드 → QR 제거 → Storage 업로드 → URL 교체."""
+    import hashlib
+    import requests as _requests
+    from utils.hwp_qr_remover import remove_qr
+    from legal_scraper.utils.supabase_client import upload_to_storage
+
+    processed = []
+    for i, row in enumerate(rows, 1):
+        original_url = row.get("다운로드URL", "")
+        if not original_url:
+            processed.append(row)
+            continue
+
+        # 원본 URL은 성공/실패 무관하게 항상 source_url로 기록
+        row = {**row, "원본다운로드URL": original_url}
+
+        # 원본 URL 해시로 Storage 경로 결정 (재실행 시 동일 경로 → 중복 방지)
+        url_hash = hashlib.md5(original_url.encode()).hexdigest()
+        storage_path = f"klac/{url_hash}.hwp"
+
+        try:
+            resp = _requests.get(original_url, timeout=30, verify=False)
+            resp.raise_for_status()
+            cleaned = remove_qr(resp.content)
+            storage_url = upload_to_storage(cleaned, storage_path)
+            row = {**row, "다운로드URL": storage_url}
+            print(f"  [{i}/{len(rows)}] QR 제거 완료: {row.get('서식제목', '')[:30]}")
+        except Exception as e:
+            import traceback
+            print(f"  [{i}/{len(rows)}] QR 제거 실패 (원본 URL 유지): {e}")
+            traceback.print_exc()
+
+        processed.append(row)
+    return processed
+
+
+def _run_legal(source: str | None = None) -> None:
     """법률서식 3곳(KLAC·ECFS·EKT) 수집 → Supabase 저장"""
     import datetime
     from scrapers import klac_scraper, ecfs_scraper, ekt_scraper
@@ -46,16 +83,18 @@ def _run_legal() -> None:
                 "title": r.get("서식제목", ""),
                 "file_format": r.get("파일형식", ""),
                 "download_url": r.get("다운로드URL", ""),
+                "source_url": r.get("원본다운로드URL") or None,
             }
             for r in rows
             if r.get("다운로드URL")
         ]
 
-    sources = [
+    all_sources = [
         ("KLAC", klac_scraper.scrape),
         ("ECFS", ecfs_scraper.scrape),
         ("EKT", ekt_scraper.scrape),
     ]
+    sources = [(k, fn) for k, fn in all_sources if not source or k == source.upper()]
 
     total = 0
     for source_key, scrape_fn in sources:
@@ -63,6 +102,9 @@ def _run_legal() -> None:
         try:
             rows = scrape_fn()
             print(f"[DONE]  {source_key} — {len(rows)}건 수집", flush=True)
+            if source_key == "KLAC":
+                print(f"        QR 제거 + Storage 업로드 시작...", flush=True)
+                rows = _process_klac_rows(rows)
             sb_rows = _to_supabase_rows(rows, source_key)
             inserted = upsert_legal_forms(sb_rows)
             print(f"        Supabase 저장 ({inserted}건 처리)", flush=True)
@@ -119,6 +161,12 @@ def parse_args() -> argparse.Namespace:
         metavar="NAME",
         help="정부부처 수집 시 특정 부처만 수집 (예: 보건복지부)",
     )
+    parser.add_argument(
+        "--source",
+        metavar="NAME",
+        choices=["KLAC", "ECFS", "EKT"],
+        help="법률서식 수집 시 특정 출처만 수집 (KLAC / ECFS / EKT)",
+    )
     return parser.parse_args()
 
 
@@ -135,7 +183,7 @@ def main() -> None:
 
     if args.target in ("legal", "all"):
         print("[PHASE] 법률서식 수집 시작 (KLAC·ECFS·EKT)", flush=True)
-        _run_legal()
+        _run_legal(source=args.source)
 
     if args.target in ("gov", "all"):
         print("[PHASE] 정부부처 계약서 수집 시작", flush=True)

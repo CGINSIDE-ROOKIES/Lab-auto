@@ -1,5 +1,5 @@
 """
-국세청 세무서식 스크래퍼 (유형 B — 페이지 순회)
+국세청 세무서식 스크래퍼 (유형 B — 페이지 순회, curl_cffi chrome)
 
 목록 URL: https://www.nts.go.kr/nts/ad/nf/nltFormatTotalApiList.do?mi=40178&pageIndex={N}
 
@@ -12,17 +12,13 @@
 """
 from __future__ import annotations
 
-import ssl
 import time
-import urllib3
 from bs4 import BeautifulSoup
-
-import requests
-from requests.adapters import HTTPAdapter
+import requests as std_requests
+from curl_cffi import requests as cffi_requests
 
 from ..base_scraper import BaseGovScraper, FormItem
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from ..utils.downloader import _extract_filename_from_cd
 
 MINISTRY_NAME = "국세청"
 LIST_URL = "https://www.nts.go.kr/nts/ad/nf/nltFormatTotalApiList.do"
@@ -30,15 +26,7 @@ LIST_PAGE_URL = f"{LIST_URL}?mi=40178"
 MI = "40178"
 CHUNK_SIZE = 100
 MAX_CHUNKS = 500   # 최대 50,000건 안전장치
-
-
-class _TLSAdapter(HTTPAdapter):
-    def init_poolmanager(self, *args, **kwargs):
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        kwargs["ssl_context"] = ctx
-        return super().init_poolmanager(*args, **kwargs)
+MAX_RETRIES = 3
 
 
 class NtsScraper(BaseGovScraper):
@@ -48,8 +36,26 @@ class NtsScraper(BaseGovScraper):
 
     def __init__(self, download_dir: str = "downloads/gov_contracts/국세청"):
         super().__init__()
+        self.session = cffi_requests.Session(impersonate="chrome")
         self.download_dir = download_dir
-        self.session.mount("https://", _TLSAdapter())
+
+    def _get(self, url: str, params: dict | None = None) -> str:
+        for attempt in range(MAX_RETRIES):
+            if attempt > 0:
+                wait = 2 ** attempt
+                print(f"[NTS] 재시도 {attempt}/{MAX_RETRIES - 1}, {wait}초 대기")
+                time.sleep(wait)
+                self.session = cffi_requests.Session(impersonate="chrome")
+            time.sleep(self.request_delay)
+            try:
+                r = self.session.get(url, params=params, timeout=30)
+                r.raise_for_status()
+                return r.text
+            except Exception as e:
+                if attempt < MAX_RETRIES - 1:
+                    print(f"[NTS] 요청 실패 (시도={attempt + 1}): {e}")
+                    continue
+                raise
 
     def fetch_items(self) -> list[FormItem]:
         """
@@ -61,21 +67,15 @@ class NtsScraper(BaseGovScraper):
 
         for chunk_num in range(1, MAX_CHUNKS + 1):
             page_index = chunk_num * CHUNK_SIZE
-            time.sleep(self.request_delay)
 
             try:
-                resp = self.session.get(
-                    LIST_URL,
-                    params={"mi": MI, "pageIndex": str(page_index)},
-                    timeout=30,
-                )
-                resp.raise_for_status()
-            except requests.RequestException as e:
+                html_text = self._get(LIST_URL, params={"mi": MI, "pageIndex": str(page_index)})
+            except Exception as e:
                 print(f"[NTS] pageIndex={page_index} 요청 실패: {e}")
+                self.had_connection_error = True
                 break
 
-            resp.encoding = "utf-8"
-            soup = BeautifulSoup(resp.text, "html.parser")
+            soup = BeautifulSoup(html_text, "html.parser")
             tbody = soup.find("tbody")
             if not tbody:
                 break
@@ -92,6 +92,8 @@ class NtsScraper(BaseGovScraper):
                 item = self._parse_row(tr)
                 if item:
                     all_items.append(item)
+                    if self.on_progress:
+                        self.on_progress(len(all_items), f"{len(all_items)}건 수집 중...")
 
             prev_total = current_total
 
@@ -100,6 +102,31 @@ class NtsScraper(BaseGovScraper):
                 break
 
         return all_items
+
+    def run(self) -> list[FormItem]:
+        items = self.fetch_items()
+        filtered = self.filter_by_keyword(items)
+        if filtered:
+            print(f"[NTS] 키워드 매칭 {len(filtered)}건 파일명 확정 중...")
+            self.resolve_filenames(filtered)
+        return filtered
+
+    def resolve_filenames(self, items: list[FormItem]) -> None:
+        """키워드 필터 통과한 항목만 헤더만 읽어 실제 파일명 확정 (본문 미수신)."""
+        law_session = std_requests.Session()
+        law_session.headers.update({"Referer": LIST_PAGE_URL})
+        for item in items:
+            try:
+                resp = law_session.get(item.file_url, stream=True, timeout=15, verify=False)
+                cd = resp.headers.get("Content-Disposition", "")
+                resp.close()
+                if cd:
+                    real_name = _extract_filename_from_cd(cd)
+                    if real_name:
+                        item.file_name = real_name
+                        item.file_format = real_name.rsplit(".", 1)[-1].lower() if "." in real_name else item.file_format
+            except Exception as e:
+                print(f"[NTS] 파일명 확정 실패: {e}")
 
     def _parse_row(self, tr) -> FormItem | None:
         tds = tr.find_all("td")
@@ -124,7 +151,6 @@ class NtsScraper(BaseGovScraper):
         file_url = ""
         file_name = ""
         file_ext = ""
-        source_url = ""
 
         for a in tds[5].find_all("a", href=True):
             href = a.get("href", "")
@@ -144,14 +170,13 @@ class NtsScraper(BaseGovScraper):
                             break
                 break
 
-            # HTML 뷰어 링크 (lawService.do) — 무시 (source_url은 NTS 목록 페이지 사용)
+            # HTML 뷰어 링크 (lawService.do) — 무시
 
         if not file_url:
             return None
 
-        # 파일명: 제목 + 확장자 (다운로드 URL에서 별도 추출 불가)
-        if not file_name:
-            file_name = f"{title}.{file_ext}" if file_ext else title
+        # 파일명: 키워드 필터 후 resolve_filenames()에서 HEAD 요청으로 확정
+        file_name = f"{title}.{file_ext}" if file_ext else title
 
         return FormItem(
             source=MINISTRY_NAME,

@@ -78,7 +78,7 @@ def _ext(url):
         params = parse_qs(urlparse(url).query)
         if "filename" in params:
             fname = unquote(params["filename"][0])
-            return fname.rsplit(".", 1)[-1].upper() if "." in fname else ""
+            return fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
     except Exception:
         pass
     return ""

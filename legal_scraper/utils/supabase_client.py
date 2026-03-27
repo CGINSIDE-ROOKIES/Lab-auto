@@ -20,6 +20,7 @@ load_dotenv()
 
 _SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 _SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+_SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
 
 def _headers(conflict_ignore: bool = True) -> dict:
@@ -97,6 +98,7 @@ def upsert_legal_forms(items: list[dict]) -> int:
             "title": item.get("title", ""),
             "file_format": item.get("file_format", ""),
             "download_url": item.get("download_url", ""),
+            "source_url": item.get("source_url") or None,
         }
         for item in items
         if item.get("download_url")  # download_url이 비어있는 항목 제외
@@ -111,6 +113,26 @@ def upsert_legal_forms(items: list[dict]) -> int:
         return 0
     resp.raise_for_status()
     return len(rows)
+
+
+def upload_to_storage(file_bytes: bytes, storage_path: str, bucket: str = "forms") -> str:
+    """파일을 Supabase Storage에 업로드하고 공개 URL을 반환.
+
+    storage_path: 버킷 내 경로 (예: "klac/abc123.hwp")
+    bucket: 버킷 이름 (기본값: "forms")
+    반환값: 공개 접근 가능한 URL
+    """
+    _check_config()
+    service_key = _SUPABASE_SERVICE_KEY or _SUPABASE_KEY
+    url = f"{_SUPABASE_URL}/storage/v1/object/{bucket}/{storage_path}"
+    headers = {
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/octet-stream",
+        "x-upsert": "true",
+    }
+    resp = requests.put(url, headers=headers, data=file_bytes, timeout=60)
+    resp.raise_for_status()
+    return f"{_SUPABASE_URL}/storage/v1/object/public/{bucket}/{storage_path}"
 
 
 def log_scrape_entry(entry: dict) -> None:
