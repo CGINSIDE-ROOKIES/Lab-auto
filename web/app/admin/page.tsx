@@ -6,6 +6,7 @@ const PAGE_SIZE = 10;
 type SP = {
   gp?: string; gs?: string; gf?: string; gk?: string;
   lp?: string; ls?: string; lf?: string; lk?: string;
+  up?: string; uk?: string; ud?: string;
 };
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<SP> }) {
@@ -20,6 +21,9 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const legalSourceList = params.ls ? params.ls.split(",").filter(Boolean) : [];
   const legalFormat = params.lf ?? "";
   const legalKeyword = params.lk ?? "";
+  const unifiedPage = Math.max(1, parseInt(params.up ?? "1"));
+  const unifiedKeyword = params.uk ?? "";
+  const unifiedDateFrom = params.ud ?? "";
 
   let govQuery = supabase
     .from("gov_contracts")
@@ -35,8 +39,15 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   if (legalFormat) legalQuery = legalQuery.eq("file_format", legalFormat);
   if (legalKeyword) legalQuery = legalQuery.ilike("title", `%${legalKeyword}%`);
 
+  let unifiedQuery = supabase
+    .from("unified_forms")
+    .select("uid, source_name, form_title, doc_format, download_url, collected_at", { count: "exact" });
+  if (unifiedKeyword) unifiedQuery = unifiedQuery.or(`form_title.ilike.%${unifiedKeyword}%,source_name.ilike.%${unifiedKeyword}%`);
+  if (unifiedDateFrom) unifiedQuery = unifiedQuery.gte("collected_at", unifiedDateFrom);
+
   const govFrom = (govPage - 1) * PAGE_SIZE;
   const legalFrom = (legalPage - 1) * PAGE_SIZE;
+  const unifiedFrom = (unifiedPage - 1) * PAGE_SIZE;
 
   const [
     { data: govData, count: govCount },
@@ -45,6 +56,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     { data: govFormatsRaw },
     { data: legalSourcesRaw },
     { data: legalFormatsRaw },
+    { data: unifiedData, count: unifiedCount },
+    { data: unifiedDatesRaw },
   ] = await Promise.all([
     govQuery.order("id", { ascending: false }).range(govFrom, govFrom + PAGE_SIZE - 1),
     legalQuery.order("id", { ascending: false }).range(legalFrom, legalFrom + PAGE_SIZE - 1),
@@ -52,7 +65,15 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     supabase.from("gov_contracts").select("file_format").limit(50000),
     supabase.from("legal_forms").select("source").limit(50000),
     supabase.from("legal_forms").select("file_format").limit(50000),
+    unifiedQuery.order("collected_at", { ascending: false }).range(unifiedFrom, unifiedFrom + PAGE_SIZE - 1),
+    supabase.from("unified_forms").select("collected_at").limit(50000),
   ]);
+
+  const unifiedActiveDates: Record<string, number> = {};
+  for (const r of unifiedDatesRaw ?? []) {
+    const d = r.collected_at?.slice(0, 10);
+    if (d) unifiedActiveDates[d] = (unifiedActiveDates[d] ?? 0) + 1;
+  }
 
   const uniq = <T extends Record<string, string | null>>(arr: T[] | null, key: keyof T) =>
     [...new Set((arr ?? []).map((r) => r[key]).filter(Boolean) as string[])].sort();
@@ -64,6 +85,12 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <p className="text-sm text-gray-500">개별 항목 조회 및 삭제</p>
       </div>
       <AdminClient
+        unifiedData={unifiedData ?? []}
+        unifiedCount={unifiedCount ?? 0}
+        unifiedPage={unifiedPage}
+        unifiedKeyword={unifiedKeyword}
+        unifiedDateFrom={unifiedDateFrom}
+        unifiedActiveDates={unifiedActiveDates}
         govData={govData ?? []}
         govCount={govCount ?? 0}
         govPage={govPage}

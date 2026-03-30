@@ -41,10 +41,39 @@ def _check_config() -> None:
         )
 
 
-def upsert_gov_contracts(items: list[FormItem]) -> int:
+def fetch_blacklist() -> set[str]:
+    """
+    deleted_forms 테이블의 download_url 전체를 set으로 반환.
+    스크래퍼 실행 시작 시 한 번만 호출하여 블랙리스트를 로드합니다.
+    """
+    _check_config()
+    blacklist: set[str] = set()
+    limit = 1000
+    offset = 0
+    url = f"{_SUPABASE_URL}/rest/v1/deleted_forms"
+    while True:
+        resp = requests.get(
+            url,
+            headers=_headers(conflict_ignore=False),
+            params={"select": "download_url", "limit": limit, "offset": offset},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        for row in rows:
+            if row.get("download_url"):
+                blacklist.add(row["download_url"])
+        if len(rows) < limit:
+            break
+        offset += limit
+    return blacklist
+
+
+def upsert_gov_contracts(items: list[FormItem], blacklist: set[str] | None = None) -> int:
     """
     gov_contracts 테이블에 수집 항목을 저장합니다.
     download_url이 같은 항목은 무시(중복 방지).
+    blacklist: fetch_blacklist()로 로드한 삭제 차단 URL 집합.
     반환값: 실제로 삽입된 건수
     """
     _check_config()
@@ -63,7 +92,7 @@ def upsert_gov_contracts(items: list[FormItem]) -> int:
             "download_url": item.file_url,
         }
         for item in items
-        if item.file_url  # download_url이 비어있는 항목 제외
+        if item.file_url and (blacklist is None or item.file_url not in blacklist)
     ]
 
     if not rows:
@@ -78,10 +107,11 @@ def upsert_gov_contracts(items: list[FormItem]) -> int:
     return len(rows)
 
 
-def upsert_legal_forms(items: list[dict]) -> int:
+def upsert_legal_forms(items: list[dict], blacklist: set[str] | None = None) -> int:
     """
     legal_forms 테이블에 수집 항목을 저장합니다.
     download_url이 같은 항목은 무시(중복 방지).
+    blacklist: fetch_blacklist()로 로드한 삭제 차단 URL 집합.
 
     items 딕셔너리 키:
       source, category_main, category_mid, title, file_format, download_url
@@ -101,7 +131,7 @@ def upsert_legal_forms(items: list[dict]) -> int:
             "source_url": item.get("source_url") or None,
         }
         for item in items
-        if item.get("download_url")  # download_url이 비어있는 항목 제외
+        if item.get("download_url") and (blacklist is None or item["download_url"] not in blacklist)
     ]
 
     if not rows:

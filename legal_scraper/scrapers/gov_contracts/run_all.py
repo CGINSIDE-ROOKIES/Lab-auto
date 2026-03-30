@@ -27,7 +27,7 @@ if str(_ROOT) not in sys.path:
 
 from legal_scraper.scrapers.gov_contracts.config import MINISTRIES, MinistryConfig
 from legal_scraper.scrapers.gov_contracts.utils.excel_writer import save_to_excel
-from legal_scraper.utils.supabase_client import upsert_gov_contracts, log_scrape_entry
+from legal_scraper.utils.supabase_client import upsert_gov_contracts, log_scrape_entry, fetch_blacklist
 
 DOWNLOAD_BASE = "downloads/gov_contracts"
 OUTPUT_EXCEL = "outputs/gov_contracts_metadata.xlsx"
@@ -162,6 +162,13 @@ def main() -> None:
         _ff.CONTRACT_KEYWORDS = args.keyword
         print(f"[INFO] 키워드 override: {args.keyword}")
 
+    blacklist: set[str] = set()
+    try:
+        blacklist = fetch_blacklist()
+        print(f"[INFO] 블랙리스트 {len(blacklist)}건 로드")
+    except Exception as e:
+        print(f"[WARN] 블랙리스트 로드 실패 (건너뜀): {e}")
+
     run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     all_items: list = []
     pending = list(targets)
@@ -205,7 +212,7 @@ def main() -> None:
                 # 부처별로 바로 Supabase 저장 (실패해도 다음 부처 계속)
                 inserted = 0
                 try:
-                    inserted = upsert_gov_contracts(items)
+                    inserted = upsert_gov_contracts(items, blacklist=blacklist)
                 except EnvironmentError:
                     pass  # .env 없는 환경 (로컬 테스트 등)
                 except Exception as e:

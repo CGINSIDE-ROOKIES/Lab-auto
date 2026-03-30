@@ -68,9 +68,16 @@ def _run_legal(source: str | None = None) -> None:
     import datetime
     from scrapers import klac_scraper, ecfs_scraper, ekt_scraper
     from utils.ekt_proxy import start as _start_ekt_proxy
-    from legal_scraper.utils.supabase_client import upsert_legal_forms, log_scrape_entry
+    from legal_scraper.utils.supabase_client import upsert_legal_forms, log_scrape_entry, fetch_blacklist
 
     _start_ekt_proxy()
+
+    blacklist: set[str] = set()
+    try:
+        blacklist = fetch_blacklist()
+        print(f"[INFO] 블랙리스트 {len(blacklist)}건 로드")
+    except Exception as e:
+        print(f"[WARN] 블랙리스트 로드 실패 (건너뜀): {e}")
 
     run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + "_legal"
 
@@ -106,7 +113,7 @@ def _run_legal(source: str | None = None) -> None:
                 print(f"        QR 제거 + Storage 업로드 시작...", flush=True)
                 rows = _process_klac_rows(rows)
             sb_rows = _to_supabase_rows(rows, source_key)
-            inserted = upsert_legal_forms(sb_rows)
+            inserted = upsert_legal_forms(sb_rows, blacklist=blacklist)
             print(f"        Supabase 저장 ({inserted}건 처리)", flush=True)
             total += inserted
             try:
