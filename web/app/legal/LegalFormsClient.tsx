@@ -4,6 +4,8 @@ import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
 import { DataTable, type Column } from "@/components/DataTable";
 
+const LEGAL_SOURCES = ["대한법률구조공단", "전자소송포털"];
+
 type UnifiedForm = {
   uid: number;
   source_name: string;
@@ -55,6 +57,7 @@ export function LegalFormsClient({ initialData, totalCount, page, pageSize, sour
   const pathname = usePathname();
   const [keyword, setKeyword] = useState(filters.keyword);
   const [selectedSources, setSelectedSources] = useState<string[]>(filters.sources);
+  const [filterVisible, setFilterVisible] = useState(true);
   const totalPages = Math.ceil(totalCount / pageSize);
   const startItem = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const endItem = Math.min(page * pageSize, totalCount);
@@ -125,40 +128,113 @@ export function LegalFormsClient({ initialData, totalCount, page, pageSize, sour
       </form>
 
       {/* 출처 체크박스 */}
-      <div className="bg-white p-3 rounded-lg border border-gray-200 text-sm">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="font-medium text-gray-600">출처 필터</span>
-          {selectedSources.length < sources.length && (
-            <button
-              onClick={() => { setSelectedSources([...sources]); router.push(buildUrl({ sources: [...sources], page: 1 })); }}
-              className="text-xs text-blue-500 hover:underline"
-            >
-              전체 선택
-            </button>
-          )}
-          {selectedSources.length > 0 && (
-            <button
-              onClick={() => { setSelectedSources([]); router.push(buildUrl({ sources: [], page: 1 })); }}
-              className="text-xs text-blue-500 hover:underline"
-            >
-              전체 해제
-            </button>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-2">
-          {sources.map((s) => (
-            <label key={s} className="flex items-center gap-1 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={selectedSources.includes(s)}
-                onChange={() => toggleSource(s)}
-                className="accent-blue-600"
-              />
-              <span className="text-gray-700">{s}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+      {(() => {
+        const legalSources = sources.filter((s) => LEGAL_SOURCES.includes(s));
+        const govSources = sources.filter((s) => !LEGAL_SOURCES.includes(s));
+
+        const allLegalSelected = legalSources.length > 0 && legalSources.every((s) => selectedSources.includes(s));
+        const allGovSelected = govSources.length > 0 && govSources.every((s) => selectedSources.includes(s));
+
+        function toggleGroup(groupSources: string[], selectAll: boolean) {
+          const next = selectAll
+            ? [...new Set([...selectedSources, ...groupSources])]
+            : selectedSources.filter((s) => !groupSources.includes(s));
+          setSelectedSources(next);
+          router.push(buildUrl({ sources: next, page: 1 }));
+        }
+
+        return (
+          <div className="bg-white p-3 rounded-lg border border-gray-200 text-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="font-medium text-gray-600">출처 필터</span>
+              {filterVisible && selectedSources.length < sources.length && (
+                <button
+                  onClick={() => { setSelectedSources([...sources]); router.push(buildUrl({ sources: [...sources], page: 1 })); }}
+                  className="text-xs text-blue-500 hover:underline"
+                >
+                  전체 선택
+                </button>
+              )}
+              {filterVisible && selectedSources.length > 0 && (
+                <button
+                  onClick={() => { setSelectedSources([]); router.push(buildUrl({ sources: [], page: 1 })); }}
+                  className="text-xs text-blue-500 hover:underline"
+                >
+                  전체 해제
+                </button>
+              )}
+              <button
+                onClick={() => setFilterVisible((v) => !v)}
+                className="ml-auto text-xs text-gray-400 hover:text-gray-600"
+              >
+                {filterVisible ? "숨기기" : "펼치기"}
+              </button>
+            </div>
+
+            {/* 법률서식 그룹 */}
+            {filterVisible && legalSources.length > 0 && (
+              <div className="mb-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <button
+                    onClick={() => toggleGroup(legalSources, !allLegalSelected)}
+                    className={`text-xs px-2 py-0.5 rounded border font-medium ${
+                      allLegalSelected
+                        ? "bg-indigo-100 border-indigo-300 text-indigo-700"
+                        : "border-gray-300 text-gray-500 hover:bg-gray-50"
+                    }`}
+                  >
+                    법률서식
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-2 pl-1">
+                  {legalSources.map((s) => (
+                    <label key={s} className="flex items-center gap-1 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={selectedSources.includes(s)}
+                        onChange={() => toggleSource(s)}
+                        className="accent-blue-600"
+                      />
+                      <span className="text-gray-700">{s}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 정부부처 그룹 */}
+            {filterVisible && govSources.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <button
+                    onClick={() => toggleGroup(govSources, !allGovSelected)}
+                    className={`text-xs px-2 py-0.5 rounded border font-medium ${
+                      allGovSelected
+                        ? "bg-indigo-100 border-indigo-300 text-indigo-700"
+                        : "border-gray-300 text-gray-500 hover:bg-gray-50"
+                    }`}
+                  >
+                    정부부처
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-2 pl-1">
+                  {govSources.map((s) => (
+                    <label key={s} className="flex items-center gap-1 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={selectedSources.includes(s)}
+                        onChange={() => toggleSource(s)}
+                        className="accent-blue-600"
+                      />
+                      <span className="text-gray-700">{s}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 테이블 */}
       <div className="bg-white rounded-lg border border-gray-200">

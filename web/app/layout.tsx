@@ -17,6 +17,7 @@ export default function RootLayout({
         <nav className="bg-white border-b border-gray-200 px-6 py-3 flex gap-6 text-sm font-medium">
           <a href="/" className="text-blue-600 hover:text-blue-800">홈</a>
           <a href="/legal" className="hover:text-blue-600">서식목록</a>
+          <a href="/admin" className="ml-auto text-gray-400 hover:text-gray-600">관리자</a>
         </nav>
         <main className="max-w-7xl mx-auto px-4 py-8">{children}</main>
       </body>
