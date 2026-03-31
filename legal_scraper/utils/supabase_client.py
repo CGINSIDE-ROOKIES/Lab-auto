@@ -69,10 +69,45 @@ def fetch_blacklist() -> set[str]:
     return blacklist
 
 
+def _fetch_existing_gov_contracts(sources: set[str]) -> tuple[set[str], set[tuple]]:
+    """주어진 source 목록에 대해 DB 기존 레코드의 download_url 및 (file_name, file_format, source) 반환."""
+    existing_urls: set[str] = set()
+    existing_triples: set[tuple] = set()
+    base = f"{_SUPABASE_URL}/rest/v1/gov_contracts"
+    for source in sources:
+        limit, offset = 1000, 0
+        while True:
+            resp = requests.get(
+                base,
+                headers=_headers(conflict_ignore=False),
+                params={
+                    "select": "download_url,file_name,file_format,source",
+                    "source": f"eq.{source}",
+                    "limit": limit,
+                    "offset": offset,
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            rows = resp.json()
+            for row in rows:
+                if row.get("download_url"):
+                    existing_urls.add(row["download_url"])
+                existing_triples.add((
+                    row.get("file_name", ""),
+                    row.get("file_format", ""),
+                    row.get("source", ""),
+                ))
+            if len(rows) < limit:
+                break
+            offset += limit
+    return existing_urls, existing_triples
+
+
 def upsert_gov_contracts(items: list[FormItem], blacklist: set[str] | None = None) -> int:
     """
     gov_contracts 테이블에 수집 항목을 저장합니다.
-    download_url이 같은 항목은 무시(중복 방지).
+    INSERT 전 DB 조회로 download_url 및 (file_name, file_format, source) 중복을 Python에서 제거.
     blacklist: fetch_blacklist()로 로드한 삭제 차단 URL 집합.
     반환값: 실제로 삽입된 건수
     """
@@ -87,7 +122,7 @@ def upsert_gov_contracts(items: list[FormItem], blacklist: set[str] | None = Non
             "file_name": item.file_name,
             "file_format": item.file_format,
             "department": item.department,
-            "registered_date": item.registered_date,
+            "registered_date": item.registered_date or None,
             "source_url": item.source_url,
             "download_url": item.file_url,
         }
@@ -98,13 +133,33 @@ def upsert_gov_contracts(items: list[FormItem], blacklist: set[str] | None = Non
     if not rows:
         return 0
 
-    url = f"{_SUPABASE_URL}/rest/v1/gov_contracts"
-    resp = requests.post(url, headers=_headers(conflict_ignore=True), json=rows, timeout=30)
-    # 409 = 전체가 중복 (이미 존재) → 정상 케이스
+    # DB 기존 데이터 조회 → 중복 사전 제거
+    sources = {row["source"] for row in rows}
+    existing_urls, existing_triples = _fetch_existing_gov_contracts(sources)
+
+    seen_urls: set[str] = set()
+    seen_triples: set[tuple] = set()
+    new_rows = []
+    for row in rows:
+        url_key = row["download_url"]
+        triple_key = (row["file_name"], row["file_format"], row["source"])
+        if url_key in existing_urls or triple_key in existing_triples:
+            continue
+        if url_key in seen_urls or triple_key in seen_triples:
+            continue
+        seen_urls.add(url_key)
+        seen_triples.add(triple_key)
+        new_rows.append(row)
+
+    if not new_rows:
+        return 0
+
+    url = f"{_SUPABASE_URL}/rest/v1/gov_contracts?on_conflict=download_url"
+    resp = requests.post(url, headers=_headers(conflict_ignore=True), json=new_rows, timeout=30)
     if resp.status_code == 409:
         return 0
     resp.raise_for_status()
-    return len(rows)
+    return len(new_rows)
 
 
 def upsert_legal_forms(items: list[dict], blacklist: set[str] | None = None) -> int:
@@ -137,7 +192,7 @@ def upsert_legal_forms(items: list[dict], blacklist: set[str] | None = None) -> 
     if not rows:
         return 0
 
-    url = f"{_SUPABASE_URL}/rest/v1/legal_forms"
+    url = f"{_SUPABASE_URL}/rest/v1/legal_forms?on_conflict=download_url"
     resp = requests.post(url, headers=_headers(conflict_ignore=True), json=rows, timeout=30)
     if resp.status_code == 409:
         return 0
