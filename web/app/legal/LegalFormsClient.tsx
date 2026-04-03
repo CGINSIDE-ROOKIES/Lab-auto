@@ -7,7 +7,7 @@ import { DataTable, type Column } from "@/components/DataTable";
 const LEGAL_SOURCES = ["대한법률구조공단", "전자소송포털"];
 
 type UnifiedForm = {
-  uid: number;
+  uid: string;
   source_name: string;
   form_title: string;
   doc_format: string;
@@ -15,7 +15,17 @@ type UnifiedForm = {
   collected_at: string;
 };
 
-type Filters = { keyword: string; sources: string[]; format: string };
+type CatCombo = { cat_large: string; cat_medium: string; cat_small: string };
+
+type Filters = {
+  keyword: string;
+  sources: string[];
+  format: string;
+  catLarge: string;
+  catMedium: string;
+  catSmall: string;
+  tag: string;
+};
 
 type Props = {
   initialData: UnifiedForm[];
@@ -24,6 +34,8 @@ type Props = {
   pageSize: number;
   sources: string[];
   formats: string[];
+  catCombos: CatCombo[];
+  tags: string[];
   filters: Filters;
 };
 
@@ -52,25 +64,74 @@ const COLUMNS: Column<UnifiedForm>[] = [
   },
 ];
 
-export function LegalFormsClient({ initialData, totalCount, page, pageSize, sources, formats, filters }: Props) {
+export function LegalFormsClient({
+  initialData,
+  totalCount,
+  page,
+  pageSize,
+  sources,
+  formats,
+  catCombos,
+  tags,
+  filters,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
+
   const [keyword, setKeyword] = useState(filters.keyword);
   const [selectedSources, setSelectedSources] = useState<string[]>(filters.sources);
   const [filterVisible, setFilterVisible] = useState(true);
+  const [tagVisible, setTagVisible] = useState(true);
+
   const totalPages = Math.ceil(totalCount / pageSize);
   const startItem = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const endItem = Math.min(page * pageSize, totalCount);
 
-  function buildUrl(overrides: Partial<{ keyword: string; sources: string[]; format: string; page: number }>) {
+  // 카테고리 계층 파생
+  const largeOptions = [...new Set(catCombos.map((c) => c.cat_large))].sort();
+  const mediumOptions = [...new Set(
+    catCombos
+      .filter((c) => !filters.catLarge || c.cat_large === filters.catLarge)
+      .map((c) => c.cat_medium)
+      .filter(Boolean)
+  )].sort();
+  const smallOptions = [...new Set(
+    catCombos
+      .filter(
+        (c) =>
+          (!filters.catLarge || c.cat_large === filters.catLarge) &&
+          (!filters.catMedium || c.cat_medium === filters.catMedium)
+      )
+      .map((c) => c.cat_small)
+      .filter(Boolean)
+  )].sort();
+
+  function buildUrl(overrides: Partial<{
+    keyword: string;
+    sources: string[];
+    format: string;
+    catLarge: string;
+    catMedium: string;
+    catSmall: string;
+    tag: string;
+    page: number;
+  }>) {
     const params = new URLSearchParams();
-    const kw = overrides.keyword !== undefined ? overrides.keyword : filters.keyword;
-    const src = overrides.sources !== undefined ? overrides.sources : selectedSources;
-    const fmt = overrides.format !== undefined ? overrides.format : filters.format;
-    const pg = overrides.page !== undefined ? overrides.page : page;
+    const kw  = overrides.keyword    !== undefined ? overrides.keyword    : filters.keyword;
+    const src = overrides.sources    !== undefined ? overrides.sources    : selectedSources;
+    const fmt = overrides.format     !== undefined ? overrides.format     : filters.format;
+    const cl  = overrides.catLarge   !== undefined ? overrides.catLarge   : filters.catLarge;
+    const cm  = overrides.catMedium  !== undefined ? overrides.catMedium  : filters.catMedium;
+    const cs  = overrides.catSmall   !== undefined ? overrides.catSmall   : filters.catSmall;
+    const tg  = overrides.tag        !== undefined ? overrides.tag        : filters.tag;
+    const pg  = overrides.page       !== undefined ? overrides.page       : page;
     if (kw) params.set("keyword", kw);
     if (src.length > 0) params.set("sources", src.join(","));
     if (fmt) params.set("format", fmt);
+    if (cl) params.set("cl", cl);
+    if (cm) params.set("cm", cm);
+    if (cs) params.set("cs", cs);
+    if (tg) params.set("tag", tg);
     if (pg > 1) params.set("page", String(pg));
     const qs = params.toString();
     return qs ? `${pathname}?${qs}` : pathname;
@@ -89,6 +150,19 @@ export function LegalFormsClient({ initialData, totalCount, page, pageSize, sour
     router.push(buildUrl({ sources: next, page: 1 }));
   }
 
+  function handleCatLarge(val: string) {
+    router.push(buildUrl({ catLarge: val, catMedium: "", catSmall: "", page: 1 }));
+  }
+  function handleCatMedium(val: string) {
+    router.push(buildUrl({ catMedium: val, catSmall: "", page: 1 }));
+  }
+  function handleCatSmall(val: string) {
+    router.push(buildUrl({ catSmall: val, page: 1 }));
+  }
+  function handleTag(val: string) {
+    router.push(buildUrl({ tag: filters.tag === val ? "" : val, page: 1 }));
+  }
+
   const pageNums: (number | "...")[] = [];
   if (totalPages <= 7) {
     for (let i = 1; i <= totalPages; i++) pageNums.push(i);
@@ -98,6 +172,19 @@ export function LegalFormsClient({ initialData, totalCount, page, pageSize, sour
     for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pageNums.push(i);
     if (page < totalPages - 2) pageNums.push("...");
     pageNums.push(totalPages);
+  }
+
+  const legalSources = sources.filter((s) => LEGAL_SOURCES.includes(s));
+  const govSources   = sources.filter((s) => !LEGAL_SOURCES.includes(s));
+  const allLegalSelected = legalSources.length > 0 && legalSources.every((s) => selectedSources.includes(s));
+  const allGovSelected   = govSources.length > 0   && govSources.every((s) => selectedSources.includes(s));
+
+  function toggleGroup(groupSources: string[], selectAll: boolean) {
+    const next = selectAll
+      ? [...new Set([...selectedSources, ...groupSources])]
+      : selectedSources.filter((s) => !groupSources.includes(s));
+    setSelectedSources(next);
+    router.push(buildUrl({ sources: next, page: 1 }));
   }
 
   return (
@@ -122,119 +209,174 @@ export function LegalFormsClient({ initialData, totalCount, page, pageSize, sour
           <option value="">전체 형식</option>
           {formats.map((f) => <option key={f}>{f}</option>)}
         </select>
+
+        {/* 카테고리 드롭다운 */}
+        <select
+          value={filters.catLarge}
+          onChange={(e) => handleCatLarge(e.target.value)}
+          className="border border-gray-300 rounded px-2 py-1 focus:outline-none"
+        >
+          <option value="">전체 대분류</option>
+          {largeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select
+          value={filters.catMedium}
+          onChange={(e) => handleCatMedium(e.target.value)}
+          disabled={mediumOptions.length === 0}
+          className="border border-gray-300 rounded px-2 py-1 focus:outline-none disabled:opacity-40"
+        >
+          <option value="">전체 중분류</option>
+          {mediumOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select
+          value={filters.catSmall}
+          onChange={(e) => handleCatSmall(e.target.value)}
+          disabled={smallOptions.length === 0}
+          className="border border-gray-300 rounded px-2 py-1 focus:outline-none disabled:opacity-40"
+        >
+          <option value="">전체 소분류</option>
+          {smallOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+
         <span className="ml-auto text-gray-400 self-center">
           전체 {totalCount.toLocaleString()}건 · {startItem}–{endItem} 표시
         </span>
       </form>
 
-      {/* 출처 체크박스 */}
-      {(() => {
-        const legalSources = sources.filter((s) => LEGAL_SOURCES.includes(s));
-        const govSources = sources.filter((s) => !LEGAL_SOURCES.includes(s));
+      {/* 출처 + 태그 필터 패널 */}
+      <div className="bg-white p-3 rounded-lg border border-gray-200 text-sm space-y-3">
+        {/* 출처 헤더 */}
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-gray-600">출처 필터</span>
+          {filterVisible && selectedSources.length < sources.length && (
+            <button
+              onClick={() => { setSelectedSources([...sources]); router.push(buildUrl({ sources: [...sources], page: 1 })); }}
+              className="text-xs text-blue-500 hover:underline"
+            >
+              전체 선택
+            </button>
+          )}
+          {filterVisible && selectedSources.length > 0 && (
+            <button
+              onClick={() => { setSelectedSources([]); router.push(buildUrl({ sources: [], page: 1 })); }}
+              className="text-xs text-blue-500 hover:underline"
+            >
+              전체 해제
+            </button>
+          )}
+          <button
+            onClick={() => setFilterVisible((v) => !v)}
+            className="ml-auto text-xs text-gray-400 hover:text-gray-600"
+          >
+            {filterVisible ? "숨기기" : "펼치기"}
+          </button>
+        </div>
 
-        const allLegalSelected = legalSources.length > 0 && legalSources.every((s) => selectedSources.includes(s));
-        const allGovSelected = govSources.length > 0 && govSources.every((s) => selectedSources.includes(s));
+        {/* 법률서식 그룹 */}
+        {filterVisible && legalSources.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <button
+                onClick={() => toggleGroup(legalSources, !allLegalSelected)}
+                className={`text-xs px-2 py-0.5 rounded border font-medium ${
+                  allLegalSelected
+                    ? "bg-indigo-100 border-indigo-300 text-indigo-700"
+                    : "border-gray-300 text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                법률서식
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 pl-1">
+              {legalSources.map((s) => (
+                <label key={s} className="flex items-center gap-1 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={selectedSources.includes(s)}
+                    onChange={() => toggleSource(s)}
+                    className="accent-blue-600"
+                  />
+                  <span className="text-gray-700">{s}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
-        function toggleGroup(groupSources: string[], selectAll: boolean) {
-          const next = selectAll
-            ? [...new Set([...selectedSources, ...groupSources])]
-            : selectedSources.filter((s) => !groupSources.includes(s));
-          setSelectedSources(next);
-          router.push(buildUrl({ sources: next, page: 1 }));
-        }
+        {/* 정부부처 그룹 */}
+        {filterVisible && govSources.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <button
+                onClick={() => toggleGroup(govSources, !allGovSelected)}
+                className={`text-xs px-2 py-0.5 rounded border font-medium ${
+                  allGovSelected
+                    ? "bg-indigo-100 border-indigo-300 text-indigo-700"
+                    : "border-gray-300 text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                정부부처
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 pl-1">
+              {govSources.map((s) => (
+                <label key={s} className="flex items-center gap-1 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={selectedSources.includes(s)}
+                    onChange={() => toggleSource(s)}
+                    className="accent-blue-600"
+                  />
+                  <span className="text-gray-700">{s}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
-        return (
-          <div className="bg-white p-3 rounded-lg border border-gray-200 text-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="font-medium text-gray-600">출처 필터</span>
-              {filterVisible && selectedSources.length < sources.length && (
+        {/* 구분선 */}
+        {tags.length > 0 && <hr className="border-gray-100" />}
+
+        {/* 태그 필터 */}
+        {tags.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-medium text-gray-600">태그 필터</span>
+              {filters.tag && (
                 <button
-                  onClick={() => { setSelectedSources([...sources]); router.push(buildUrl({ sources: [...sources], page: 1 })); }}
+                  onClick={() => router.push(buildUrl({ tag: "", page: 1 }))}
                   className="text-xs text-blue-500 hover:underline"
                 >
-                  전체 선택
-                </button>
-              )}
-              {filterVisible && selectedSources.length > 0 && (
-                <button
-                  onClick={() => { setSelectedSources([]); router.push(buildUrl({ sources: [], page: 1 })); }}
-                  className="text-xs text-blue-500 hover:underline"
-                >
-                  전체 해제
+                  초기화
                 </button>
               )}
               <button
-                onClick={() => setFilterVisible((v) => !v)}
+                onClick={() => setTagVisible((v) => !v)}
                 className="ml-auto text-xs text-gray-400 hover:text-gray-600"
               >
-                {filterVisible ? "숨기기" : "펼치기"}
+                {tagVisible ? "숨기기" : "펼치기"}
               </button>
             </div>
-
-            {/* 법률서식 그룹 */}
-            {filterVisible && legalSources.length > 0 && (
-              <div className="mb-3">
-                <div className="flex items-center gap-2 mb-1">
+            {tagVisible && (
+              <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
+                {tags.map((t) => (
                   <button
-                    onClick={() => toggleGroup(legalSources, !allLegalSelected)}
-                    className={`text-xs px-2 py-0.5 rounded border font-medium ${
-                      allLegalSelected
-                        ? "bg-indigo-100 border-indigo-300 text-indigo-700"
-                        : "border-gray-300 text-gray-500 hover:bg-gray-50"
+                    key={t}
+                    onClick={() => handleTag(t)}
+                    className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                      filters.tag === t
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600"
                     }`}
                   >
-                    법률서식
+                    {t}
                   </button>
-                </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-2 pl-1">
-                  {legalSources.map((s) => (
-                    <label key={s} className="flex items-center gap-1 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={selectedSources.includes(s)}
-                        onChange={() => toggleSource(s)}
-                        className="accent-blue-600"
-                      />
-                      <span className="text-gray-700">{s}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 정부부처 그룹 */}
-            {filterVisible && govSources.length > 0 && (
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <button
-                    onClick={() => toggleGroup(govSources, !allGovSelected)}
-                    className={`text-xs px-2 py-0.5 rounded border font-medium ${
-                      allGovSelected
-                        ? "bg-indigo-100 border-indigo-300 text-indigo-700"
-                        : "border-gray-300 text-gray-500 hover:bg-gray-50"
-                    }`}
-                  >
-                    정부부처
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-2 pl-1">
-                  {govSources.map((s) => (
-                    <label key={s} className="flex items-center gap-1 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={selectedSources.includes(s)}
-                        onChange={() => toggleSource(s)}
-                        className="accent-blue-600"
-                      />
-                      <span className="text-gray-700">{s}</span>
-                    </label>
-                  ))}
-                </div>
+                ))}
               </div>
             )}
           </div>
-        );
-      })()}
+        )}
+      </div>
 
       {/* 테이블 */}
       <div className="bg-white rounded-lg border border-gray-200">
