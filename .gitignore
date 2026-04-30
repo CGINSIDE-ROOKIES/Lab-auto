@@ -41,3 +41,10 @@ web/.env.local
 
 # DB 스냅샷 (로컬 캐시)
 legal_scraper/data/
+
+# SQL 마이그레이션 (로컬 작업용)
+*.sql
+
+# TypeScript 빌드 캐시
+tsconfig.tsbuildinfo
+web/tsconfig.tsbuildinfo

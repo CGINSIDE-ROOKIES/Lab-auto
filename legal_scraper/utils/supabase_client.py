@@ -21,15 +21,21 @@ load_dotenv()
 _SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 _SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 _SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+_S3_ACCESS_KEY = os.getenv("SUPABASE_S3_ACCESS_KEY", "")
+_S3_SECRET_KEY = os.getenv("SUPABASE_S3_SECRET_KEY", "")
+_S3_REGION = os.getenv("SUPABASE_S3_REGION", "local")
 
 
-def _headers(conflict_ignore: bool = True) -> dict:
+def _headers(conflict_ignore: bool = True, write: bool = False) -> dict:
     prefer = "resolution=ignore-duplicates,return=minimal" if conflict_ignore else "return=minimal"
+    key = (_SUPABASE_SERVICE_KEY or _SUPABASE_KEY) if write else _SUPABASE_KEY
+    schema_header = "Content-Profile" if write else "Accept-Profile"
     return {
         "apikey": _SUPABASE_KEY,
-        "Authorization": f"Bearer {_SUPABASE_KEY}",
+        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
         "Prefer": prefer,
+        schema_header: "FormArchive",
     }
 
 
@@ -155,11 +161,45 @@ def upsert_gov_contracts(items: list[FormItem], blacklist: set[str] | None = Non
         return 0
 
     url = f"{_SUPABASE_URL}/rest/v1/gov_contracts?on_conflict=download_url"
-    resp = requests.post(url, headers=_headers(conflict_ignore=True), json=new_rows, timeout=30)
+    resp = requests.post(url, headers=_headers(conflict_ignore=True, write=True), json=new_rows, timeout=30)
     if resp.status_code == 409:
         return 0
     resp.raise_for_status()
     return len(new_rows)
+
+
+def fetch_existing_klac_urls() -> set[str]:
+    """
+    DB에 저장된 KLAC 항목의 source_url + download_url을 모두 반환.
+    _process_klac_rows 전 신규건만 필터링하는 데 사용.
+    """
+    _check_config()
+    existing: set[str] = set()
+    limit, offset = 1000, 0
+    base = f"{_SUPABASE_URL}/rest/v1/legal_forms"
+    while True:
+        resp = requests.get(
+            base,
+            headers=_headers(conflict_ignore=False),
+            params={
+                "select": "download_url,source_url",
+                "source": "eq.대한법률구조공단",
+                "limit": limit,
+                "offset": offset,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        for row in rows:
+            if row.get("source_url"):
+                existing.add(row["source_url"])
+            if row.get("download_url"):
+                existing.add(row["download_url"])
+        if len(rows) < limit:
+            break
+        offset += limit
+    return existing
 
 
 def upsert_legal_forms(items: list[dict], blacklist: set[str] | None = None) -> int:
@@ -193,7 +233,7 @@ def upsert_legal_forms(items: list[dict], blacklist: set[str] | None = None) -> 
         return 0
 
     url = f"{_SUPABASE_URL}/rest/v1/legal_forms?on_conflict=download_url"
-    resp = requests.post(url, headers=_headers(conflict_ignore=True), json=rows, timeout=30)
+    resp = requests.post(url, headers=_headers(conflict_ignore=True, write=True), json=rows, timeout=30)
     if resp.status_code == 409:
         return 0
     resp.raise_for_status()
@@ -201,22 +241,26 @@ def upsert_legal_forms(items: list[dict], blacklist: set[str] | None = None) -> 
 
 
 def upload_to_storage(file_bytes: bytes, storage_path: str, bucket: str = "forms") -> str:
-    """파일을 Supabase Storage에 업로드하고 공개 URL을 반환.
+    """파일을 Supabase Storage에 S3 호환 API로 업로드하고 공개 URL을 반환."""
+    import io
+    import boto3
+    from botocore.config import Config
 
-    storage_path: 버킷 내 경로 (예: "klac/abc123.hwp")
-    bucket: 버킷 이름 (기본값: "forms")
-    반환값: 공개 접근 가능한 URL
-    """
-    _check_config()
-    service_key = _SUPABASE_SERVICE_KEY or _SUPABASE_KEY
-    url = f"{_SUPABASE_URL}/storage/v1/object/{bucket}/{storage_path}"
-    headers = {
-        "Authorization": f"Bearer {service_key}",
-        "Content-Type": "application/octet-stream",
-        "x-upsert": "true",
-    }
-    resp = requests.put(url, headers=headers, data=file_bytes, timeout=60)
-    resp.raise_for_status()
+    s3_endpoint = f"{_SUPABASE_URL}/storage/v1/s3"
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=s3_endpoint,
+        aws_access_key_id=_S3_ACCESS_KEY,
+        aws_secret_access_key=_S3_SECRET_KEY,
+        region_name=_S3_REGION,
+        config=Config(signature_version="s3v4"),
+    )
+    s3.put_object(
+        Bucket=bucket,
+        Key=storage_path,
+        Body=file_bytes,
+        ContentType="application/octet-stream",
+    )
     return f"{_SUPABASE_URL}/storage/v1/object/public/{bucket}/{storage_path}"
 
 
@@ -240,5 +284,5 @@ def log_scrape_entry(entry: dict) -> None:
         "scraped_at": datetime.now(_KST).strftime("%Y-%m-%dT%H:%M:%S"),
     }
     url = f"{_SUPABASE_URL}/rest/v1/scrape_logs"
-    resp = requests.post(url, headers=_headers(conflict_ignore=False), json=[row], timeout=30)
+    resp = requests.post(url, headers=_headers(conflict_ignore=False, write=True), json=[row], timeout=30)
     resp.raise_for_status()

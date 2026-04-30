@@ -124,7 +124,7 @@ def _parse_rows(soup, tab_name):
     return rows
 
 
-def scrape(sample_mode=False, on_progress=None, known_keys=None):
+def scrape(sample_mode=False, on_progress=None, known_keys=None, limit=None):
     session = requests.Session()
     session.headers.update(HEADERS)
     results = []
@@ -176,9 +176,11 @@ def scrape(sample_mode=False, on_progress=None, known_keys=None):
         except Exception as e:
             log.error(f"KLAC 탭={tab_name} 오류: {e}")
 
-        if sample_mode:
+        if sample_mode or (limit and len(results) >= limit):
             break
 
+    if limit:
+        results = results[:limit]
     if on_progress:
         on_progress(total_tabs, total_tabs, "완료")
     log.info(f"KLAC 완료: {len(results)}건")

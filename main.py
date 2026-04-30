@@ -51,7 +51,7 @@ def _process_klac_rows(rows: list[dict]) -> list[dict]:
             resp = _requests.get(original_url, timeout=30, verify=False)
             resp.raise_for_status()
             cleaned = remove_qr(resp.content)
-            storage_url = upload_to_storage(cleaned, storage_path)
+            storage_url = upload_to_storage(cleaned, storage_path, bucket="forms")
             row = {**row, "다운로드URL": storage_url}
             print(f"  [{i}/{len(rows)}] QR 제거 완료: {row.get('서식제목', '')[:30]}")
         except Exception as e:
@@ -63,7 +63,7 @@ def _process_klac_rows(rows: list[dict]) -> list[dict]:
     return processed
 
 
-def _run_legal(source: str | None = None) -> None:
+def _run_legal(source: str | None = None, sample: int | None = None) -> None:
     """법률서식 3곳(KLAC·ECFS·EKT) 수집 → Supabase 저장"""
     import datetime
     from scrapers import klac_scraper, ecfs_scraper, ekt_scraper
@@ -107,11 +107,17 @@ def _run_legal(source: str | None = None) -> None:
     for source_key, scrape_fn in sources:
         print(f"[START] {source_key} 수집 중...", flush=True)
         try:
-            rows = scrape_fn()
+            rows = scrape_fn(limit=sample) if source_key == "KLAC" and sample else scrape_fn()
             print(f"[DONE]  {source_key} — {len(rows)}건 수집", flush=True)
             if source_key == "KLAC":
                 print(f"        QR 제거 + Storage 업로드 시작...", flush=True)
-                rows = _process_klac_rows(rows)
+                from legal_scraper.utils.supabase_client import fetch_existing_klac_urls
+                existing_klac = fetch_existing_klac_urls()
+                new_rows = [r for r in rows if r.get("다운로드URL") not in existing_klac]
+                skip_count = len(rows) - len(new_rows)
+                if skip_count:
+                    print(f"        기존 {skip_count}건 스킵, 신규 {len(new_rows)}건만 처리", flush=True)
+                rows = _process_klac_rows(new_rows)
             sb_rows = _to_supabase_rows(rows, source_key)
             inserted = upsert_legal_forms(sb_rows, blacklist=blacklist)
             print(f"        Supabase 저장 ({inserted}건 처리)", flush=True)
@@ -174,6 +180,12 @@ def parse_args() -> argparse.Namespace:
         choices=["KLAC", "ECFS", "EKT"],
         help="법률서식 수집 시 특정 출처만 수집 (KLAC / ECFS / EKT)",
     )
+    parser.add_argument(
+        "--sample",
+        type=int,
+        metavar="N",
+        help="처음 N건만 처리 (테스트용)",
+    )
     return parser.parse_args()
 
 
@@ -190,7 +202,7 @@ def main() -> None:
 
     if args.target in ("legal", "all"):
         print("[PHASE] 법률서식 수집 시작 (KLAC·ECFS·EKT)", flush=True)
-        _run_legal(source=args.source)
+        _run_legal(source=args.source, sample=args.sample)
 
     if args.target in ("gov", "all"):
         print("[PHASE] 정부부처 계약서 수집 시작", flush=True)

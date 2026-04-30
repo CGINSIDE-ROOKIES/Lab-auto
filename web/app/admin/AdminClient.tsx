@@ -8,7 +8,7 @@ type GovRow = { id: number; source: string; title: string; file_name: string; fi
 type LegalRow = { id: number; source: string; title: string; file_format: string; download_url: string | null; collected_at: string };
 type UnifiedRow = { uid: string; source_name: string; form_title: string; doc_format: string; download_url: string | null; collected_at: string };
 type Filters = { sources: string[]; format: string; keyword: string };
-type ColDef = { key: string; label: string; truncate?: boolean; noWrap?: boolean; render?: (val: unknown) => React.ReactNode };
+type ColDef = { key: string; label: string; truncate?: boolean; noWrap?: boolean; render?: (val: unknown, row: unknown) => React.ReactNode };
 
 // ─── AdminSection ─────────────────────────────────────────────────────────────
 
@@ -246,7 +246,7 @@ function AdminSection<T extends { id: number; source: string }>({
                               title={col.truncate ? String(val ?? "") : undefined}
                             >
                               {col.render
-                                ? col.render(val)
+                                ? col.render(val, row)
                                 : col.key === "collected_at"
                                 ? new Date(val as string).toLocaleDateString("ko-KR")
                                 : String(val ?? "—")}
@@ -537,11 +537,17 @@ function RecentSection({ data, count, page, pageSize, keyword, dateFrom, activeD
                           {row.collected_at ? new Date(row.collected_at).toLocaleDateString("ko-KR") : "—"}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">
-                          {row.download_url ? (
-                            <a href={row.download_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                              다운로드
-                            </a>
-                          ) : (
+                          {row.download_url ? (() => {
+                            const ext = row.doc_format.toLowerCase();
+                            const safeName = (row.form_title || "서식").replace(/[/\\:*?"<>|]/g, "_");
+                            const filename = `${safeName}.${ext}`;
+                            const href = `/api/download?url=${encodeURIComponent(row.download_url)}&filename=${encodeURIComponent(filename)}`;
+                            return (
+                              <a href={href} download={filename} className="text-blue-600 hover:underline">
+                                다운로드
+                              </a>
+                            );
+                          })() : (
                             <span className="text-gray-300">—</span>
                           )}
                         </td>
@@ -723,14 +729,19 @@ export function AdminClient({
             key: "download_url",
             label: "다운로드",
             noWrap: true,
-            render: (v) =>
-              v ? (
-                <a href={v as string} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            render: (v, row) => {
+              if (!v) return <span className="text-gray-300">—</span>;
+              const r = row as GovRow;
+              const ext = r.file_format.toLowerCase();
+              const safeName = (r.file_name || r.title || "서식").replace(/[/\\:*?"<>|]/g, "_");
+              const filename = `${safeName}.${ext}`;
+              const href = `/api/download?url=${encodeURIComponent(v as string)}&filename=${encodeURIComponent(filename)}`;
+              return (
+                <a href={href} download={filename} className="text-blue-600 hover:underline">
                   다운로드
                 </a>
-              ) : (
-                <span className="text-gray-300">—</span>
-              ),
+              );
+            },
           },
         ]}
         deleteApiPath="/api/admin/gov-contracts"
@@ -760,14 +771,19 @@ export function AdminClient({
             key: "download_url",
             label: "다운로드",
             noWrap: true,
-            render: (v) =>
-              v ? (
-                <a href={v as string} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            render: (v, row) => {
+              if (!v) return <span className="text-gray-300">—</span>;
+              const r = row as LegalRow;
+              const ext = r.file_format.toLowerCase();
+              const safeName = (r.title || "서식").replace(/[/\\:*?"<>|]/g, "_");
+              const filename = `${safeName}.${ext}`;
+              const href = `/api/download?url=${encodeURIComponent(v as string)}&filename=${encodeURIComponent(filename)}`;
+              return (
+                <a href={href} download={filename} className="text-blue-600 hover:underline">
                   다운로드
                 </a>
-              ) : (
-                <span className="text-gray-300">—</span>
-              ),
+              );
+            },
           },
         ]}
         deleteApiPath="/api/admin/legal-forms"

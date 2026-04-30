@@ -53,14 +53,18 @@ const COLUMNS: Column<UnifiedForm>[] = [
   {
     key: "download_url",
     label: "다운로드",
-    render: (v) =>
-      v ? (
-        <a href={v as string} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+    render: (v, row) => {
+      if (!v) return <span className="text-gray-300">—</span>;
+      const ext = row.doc_format.toLowerCase();
+      const safeName = (row.form_title || "서식").replace(/[/\\:*?"<>|]/g, "_");
+      const filename = `${safeName}.${ext}`;
+      const href = `/api/download?url=${encodeURIComponent(v as string)}&filename=${encodeURIComponent(filename)}`;
+      return (
+        <a href={href} download={filename} className="text-blue-600 hover:underline">
           다운로드
         </a>
-      ) : (
-        <span className="text-gray-300">—</span>
-      ),
+      );
+    },
   },
 ];
 
